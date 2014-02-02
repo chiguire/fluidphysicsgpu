@@ -340,6 +340,12 @@
     <ClInclude Include="..\..\src\scene\mesh_text.h">
       <Filter>octet\scene</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\platform\configure.h">
+      <Filter>octet\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\platform\machine_specific.h">
+      <Filter>octet\platform</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\src\resources\mesh_builder.inl">
@@ -347,6 +353,9 @@
     </None>
     <None Include="..\..\src\resources\resources.inl">
       <Filter>octet\resources</Filter>
+    </None>
+    <None Include="..\..\assets\add_numbers.cl">
+      <Filter>Source Files</Filter>
     </None>
   </ItemGroup>
 </Project>

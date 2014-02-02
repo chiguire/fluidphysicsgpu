@@ -76,9 +76,11 @@
     <ClInclude Include="..\..\src\physics\physics_world.h" />
     <ClInclude Include="..\..\src\platform\app_common.h" />
     <ClInclude Include="..\..\src\platform\CL\opencl.h" />
+    <ClInclude Include="..\..\src\platform\configure.h" />
     <ClInclude Include="..\..\src\platform\glut_specific.h" />
     <ClInclude Include="..\..\src\platform\gl_defs.h" />
     <ClInclude Include="..\..\src\platform\gl_skeleton.h" />
+    <ClInclude Include="..\..\src\platform\machine_specific.h" />
     <ClInclude Include="..\..\src\platform\platform.h" />
     <ClInclude Include="..\..\src\platform\vita_specific.h" />
     <ClInclude Include="..\..\src\platform\windows_specific.h" />
@@ -124,6 +126,7 @@
     <ClInclude Include="..\..\src\tinyxml\tinyxml.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\assets\add_numbers.cl" />
     <None Include="..\..\src\resources\mesh_builder.inl" />
     <None Include="..\..\src\resources\resources.inl" />
   </ItemGroup>

@@ -23,7 +23,7 @@
 //
 
 #ifndef OCTET_OPENCL
-  #define OCTET_OPENCL 0
+  #define OCTET_OPENCL 1
 #endif
 
 #if defined(WIN32)
