@@ -127,6 +127,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\assets\add_numbers.cl" />
+    <None Include="..\..\assets\opencl\fluids.cl" />
     <None Include="..\..\src\resources\mesh_builder.inl" />
     <None Include="..\..\src\resources\resources.inl" />
   </ItemGroup>
