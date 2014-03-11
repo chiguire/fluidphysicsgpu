@@ -67,11 +67,6 @@ namespace octet {
     dynarray <float>dens0;
     dynarray <float>dens1;
 
-    float *u;
-    float *u0;
-    float *v;
-    float *v0;
-
     /*** OPENCL SPECIFIC FUNCTIONS ***/
 
     cl_device_id createDevice() {
@@ -510,11 +505,6 @@ namespace octet {
         dens1[i] = 0;
       }
 
-      u = (float *)malloc(size*sizeof(float));
-      u0 = (float *)malloc(size*sizeof(float));
-      v = (float *)malloc(size*sizeof(float));
-      v0 = (float *)malloc(size*sizeof(float));
-
       // Create device and context
       initOpenCL();
       
@@ -523,7 +513,12 @@ namespace octet {
 
     // this is called to draw the world
     void draw_world(int x, int y, int w, int h) {
-      
+      float *leuv0 = const_cast<float *>(uv0.data());
+      float *leuv1 = const_cast<float *>(uv1.data());
+      float *ledens0 = const_cast<float *>(dens0.data());
+      float *ledens1 = const_cast<float *>(dens1.data());
+      vel_step(N, leuv1, leuv0, visc, dt);
+      dens_step(N, ledens1, ledens0, leuv1, diff, dt);
       //print_float(uv1.data(), Nborder, Nborder, 2);
       //print_float(dens1.data(), Nborder, Nborder, 1);
       
