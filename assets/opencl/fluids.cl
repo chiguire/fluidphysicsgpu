@@ -179,7 +179,7 @@ __kernel void project_end(__global float2 *uv,
 /** ADVECT **/
 __kernel void advect_float2(__global float2 *uv0,
                             __global float2 *uv1,
-							__global float2 *uv,
+                            __global float2 *uv,
                             int data_width,
                             float dt0) {
   uint global_addr_x, global_addr_y, idx, idx00, idx01, idx10, idx11;
@@ -189,17 +189,17 @@ __kernel void advect_float2(__global float2 *uv0,
   global_addr_y = get_global_id(1)+1;
   idx = (global_addr_y)*(data_width)+(global_addr_x);
   p = clamp((float2)(global_addr_x - dt0*uv[idx].x, global_addr_y - dt0*uv[idx].y),
-            (0.5f, 0.5f),
-            ((data_width-2)+0.5f, (data_width-2)+0.5f);
+            (float2)(0.5f, 0.5f),
+            (float2)((data_width-2)+0.5f, (data_width-2)+0.5f));
   pi0 = convert_int2(p);
-  pi1 = pi0 + (1,1);
+  pi1 = pi0 + (float2)(1,1);
   pf1 = p-pi0;
   pf0 = 1-pf1;
 
-  idx00 = pi0.y*data_width_+pi0.x;
-  idx01 = pi1.y*data_width_+pi0.x;
-  idx11 = pi1.y*data_width_+pi1.x;
-  idx10 = pi0.y*data_width_+pi1.x;
+  idx00 = pi0.y*data_width+pi0.x;
+  idx01 = pi1.y*data_width+pi0.x;
+  idx11 = pi1.y*data_width+pi1.x;
+  idx10 = pi0.y*data_width+pi1.x;
 
   uv1[idx] = pf0.x * (pf0.y * uv0[idx00] + pf1.y * uv0[idx01]) +
              pf1.x * (pf0.y * uv0[idx10] + pf1.y * uv0[idx11]);
@@ -207,7 +207,7 @@ __kernel void advect_float2(__global float2 *uv0,
 
 __kernel void advect_float(__global float *arr0,
                            __global float *arr1,
-						   __global float2 *uv,
+                           __global float2 *uv,
                            int data_width,
                            float dt0) {
   uint global_addr_x, global_addr_y, idx, idx00, idx01, idx10, idx11;
@@ -217,17 +217,17 @@ __kernel void advect_float(__global float *arr0,
   global_addr_y = get_global_id(1)+1;
   idx = (global_addr_y)*(data_width)+(global_addr_x);
   p = clamp((float2)(global_addr_x - dt0*uv[idx].x, global_addr_y - dt0*uv[idx].y),
-            (0.5f, 0.5f),
-            ((data_width-2)+0.5f, (data_width-2)+0.5f);
+            (float2)(0.5f, 0.5f),
+            (float2)((data_width-2)+0.5f, (data_width-2)+0.5f));
   pi0 = convert_int2(p);
-  pi1 = pi0 + (1,1);
+  pi1 = pi0 + (float2)(1,1);
   pf1 = p-pi0;
   pf0 = 1-pf1;
 
-  idx00 = pi0.y*data_width_+pi0.x;
-  idx01 = pi1.y*data_width_+pi0.x;
-  idx11 = pi1.y*data_width_+pi1.x;
-  idx10 = pi0.y*data_width_+pi1.x;
+  idx00 = pi0.y*data_width+pi0.x;
+  idx01 = pi1.y*data_width+pi0.x;
+  idx11 = pi1.y*data_width+pi1.x;
+  idx10 = pi0.y*data_width+pi1.x;
 
   arr1[idx] = pf0.x * (pf0.y * arr0[idx00] + pf1.y * arr0[idx01]) +
               pf1.x * (pf0.y * arr0[idx10] + pf1.y * arr0[idx11]);
