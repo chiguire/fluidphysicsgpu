@@ -13,11 +13,6 @@
 // Copied OpenCL initialisation code from
 // http://www.drdobbs.com/parallel/a-gentle-introduction-to-opencl/231002854?pgno=3
 
-#define IX(i,j) ((i)+(N+2)*(j))
-#define SWAP(x0,x) {float * tmp=x0;x0=x;x=tmp;}
-#define FOR_EACH_CELL for ( i=1 ; i<=N ; i++ ) { for ( j=1 ; j<=N ; j++ ) {
-#define END_FOR }}
-
 namespace octet {
   class engine : public app {
     typedef mat4t mat4t;
@@ -229,8 +224,8 @@ namespace octet {
       add_source(N, dens1_buffer, dens0_buffer, dt, clAddSourceFloatKernel);
       diffuse(N, dens0_buffer, dens1_buffer, diff, dt, clLinSolveFloatKernel, clSetBoundFloatKernel, clSetBoundEndFloatKernel);
       advect(N, dens1_buffer, dens0_buffer, uv0_buffer, dt, clAdvectFloatKernel, clSetBoundFloatKernel, clSetBoundEndFloatKernel);
-      readArray(dens0_buffer, x0, (N+2)*(N+2)*sizeof(float));
-      readArray(dens1_buffer, x, (N+2)*(N+2)*sizeof(float));
+      readArray(dens0_buffer, x0, (N+2)*(N+2));
+      readArray(dens1_buffer, x, (N+2)*(N+2));
     }
 
     void vel_step ( int N, float * uv, float * uv0, float visc, float dt )
@@ -242,8 +237,8 @@ namespace octet {
       project (N, uv0_buffer, dens0_buffer, dens1_buffer);
       advect(N, uv1_buffer, uv0_buffer, uv0_buffer, dt, clAdvectFloat2Kernel, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel);
       project(N, uv1_buffer, dens0_buffer, dens1_buffer);
-      readArray(uv0_buffer, uv0, (N+2)*(N+2)*2*sizeof(float));
-      readArray(uv1_buffer, uv, (N+2)*(N+2)*2*sizeof(float));
+      readArray(uv0_buffer, uv0, (N+2)*(N+2)*2);
+      readArray(uv1_buffer, uv, (N+2)*(N+2)*2);
     }
 
     void add_source ( int N, cl_mem x, cl_mem s, float dt, cl_kernel clAddSourceKern)
@@ -271,6 +266,7 @@ namespace octet {
       if (err < 0) {
         perror("Could not enqueue the kernel");
       }
+      clFinish(clQueue);
     }
 
     void set_bnd ( int N, cl_mem x, cl_kernel setBndKern, cl_kernel setBndEndKern)
@@ -280,6 +276,7 @@ namespace octet {
       size_t global_size = N;
       size_t local_size = 1;
       size_t end_size = 1;
+      size_t end_size_local = 1;
 
       int Nborder = N + 2;
 
@@ -300,7 +297,7 @@ namespace octet {
       err |= clEnqueueNDRangeKernel(clQueue, setBndKern, 1, NULL, &global_size,
         &local_size, 0, NULL, NULL);
       err |= clEnqueueNDRangeKernel(clQueue, setBndEndKern, 1, NULL, &end_size,
-        &end_size, 0, NULL, NULL);
+        &end_size_local, 0, NULL, NULL);
       if (err < 0) {
         perror("Could not enqueue the kernel for set_bnd");
         return; //exit(1);
@@ -339,6 +336,7 @@ namespace octet {
           return; //exit(1);
         }
         set_bnd( width, x, setBndKern, setBndEndKern );
+        clFinish(clQueue);
       }
     }
 
@@ -378,6 +376,7 @@ namespace octet {
       }
 
       set_bnd ( N, d, setBndKern, setBndEndKern );
+      clFinish(clQueue);
     }
 
     void project ( int N, cl_mem uv, cl_mem p, cl_mem div )
@@ -432,6 +431,7 @@ namespace octet {
       }
 
       set_bnd( N, uv, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel );
+      clFinish(clQueue);
     }
 
     /*** DEBUG FUNCTIONS ***/
