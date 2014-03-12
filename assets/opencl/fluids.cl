@@ -9,8 +9,19 @@ __kernel void add_source_float2(__global float2* prev,
   global_addr_y = get_global_id(1);
   idx = (global_addr_y)*(data_width)+global_addr_x;
   curr[idx] += dt*prev[idx];
-
 }
+
+__kernel void add_source_float(__global float* prev,
+                               __global float* curr,
+                               int data_width,
+                               float dt) {
+  uint global_addr_x, global_addr_y, idx;
+  global_addr_x = get_global_id(0);
+  global_addr_y = get_global_id(1);
+  idx = (global_addr_y)*(data_width)+global_addr_x;
+  curr[idx] += dt*prev[idx];
+}
+
 __kernel void lin_solve_float2(__global float2* prev,
                                __global float2* curr,
                                int data_width,

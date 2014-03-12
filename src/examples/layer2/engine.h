@@ -96,7 +96,7 @@ namespace octet {
 
     cl_kernel createKernel(cl_program prg, const char *kernel_name) {
       cl_int err;
-      cl_kernel k = clCreateKernel(clProgram, "add_source_float2", &err);
+      cl_kernel k = clCreateKernel(clProgram, kernel_name, &err);
       if (err < 0) {
         printf("Could not create kernel %s", kernel_name);
         return NULL; 
@@ -223,9 +223,9 @@ namespace octet {
     
     void dens_step ( int N, float * x, float * x0, float * uv, float diff, float dt )
     {
-      writeArray(dens0_buffer, x0, (N+2)*(N+2)*sizeof(float));
-      writeArray(dens1_buffer, x, (N+2)*(N+2)*sizeof(float));
-      writeArray(uv0_buffer, uv, (N+2)*(N+2)*2*sizeof(float));
+      writeArray(dens0_buffer, x0, (N+2)*(N+2));
+      writeArray(dens1_buffer, x, (N+2)*(N+2));
+      writeArray(uv0_buffer, uv, (N+2)*(N+2)*2);
       add_source(N, dens1_buffer, dens0_buffer, dt, clAddSourceFloatKernel);
       diffuse(N, dens0_buffer, dens1_buffer, diff, dt, clLinSolveFloatKernel, clSetBoundFloatKernel, clSetBoundEndFloatKernel);
       advect(N, dens1_buffer, dens0_buffer, uv0_buffer, dt, clAdvectFloatKernel, clSetBoundFloatKernel, clSetBoundEndFloatKernel);
@@ -235,8 +235,8 @@ namespace octet {
 
     void vel_step ( int N, float * uv, float * uv0, float visc, float dt )
     {
-      writeArray(uv0_buffer, uv0, (N+2)*(N+2)*2*sizeof(float));
-      writeArray(uv1_buffer, uv, (N+2)*(N+2)*2*sizeof(float));
+      writeArray(uv0_buffer, uv0, (N+2)*(N+2)*2);
+      writeArray(uv1_buffer, uv, (N+2)*(N+2)*2);
       add_source(N, uv1_buffer, uv0_buffer, dt, clAddSourceFloat2Kernel);
       diffuse(N, uv0_buffer, uv1_buffer, visc, dt, clLinSolveFloat2Kernel, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel);
       project (N, uv0_buffer, dens0_buffer, dens1_buffer);
@@ -259,8 +259,8 @@ namespace octet {
       // Create Kernel Arguments
       err = clSetKernelArg(clAddSourceKern, 0, sizeof(cl_mem), &s);
       err |= clSetKernelArg(clAddSourceKern, 1, sizeof(cl_mem), &x);
-      err |= clSetKernelArg(clAddSourceKern, 2, sizeof(cl_mem), &size);
-      err |= clSetKernelArg(clAddSourceKern, 3, sizeof(cl_mem), &dt);
+      err |= clSetKernelArg(clAddSourceKern, 2, sizeof(cl_int), &size);
+      err |= clSetKernelArg(clAddSourceKern, 3, sizeof(cl_float), &dt);
       if (err < 0) {
         perror("Could not create a kernel argument");
       }
@@ -284,14 +284,14 @@ namespace octet {
       int Nborder = N + 2;
 
       err = clSetKernelArg(setBndKern, 0, sizeof(cl_mem), &x);
-      err |= clSetKernelArg(setBndKern, 1, sizeof(cl_mem), &Nborder);
+      err |= clSetKernelArg(setBndKern, 1, sizeof(cl_int), &Nborder);
       if (err < 0) {
         perror("Could not create a kernel argument for setBndKern");
         return; //exit(1);
       }
 
       err = clSetKernelArg(setBndEndKern, 0, sizeof(cl_mem), &x);
-      err |= clSetKernelArg(setBndEndKern, 1, sizeof(cl_mem), &Nborder);
+      err |= clSetKernelArg(setBndEndKern, 1, sizeof(int), &Nborder);
       if (err < 0) {
         perror("Could not create a kernel argument for setBndEndKern");
         return; //exit(1);
@@ -322,9 +322,9 @@ namespace octet {
       // Create Kernel Arguments
       err = clSetKernelArg(linSolveKern, 0, sizeof(cl_mem), &x0);
       err |= clSetKernelArg(linSolveKern, 1, sizeof(cl_mem), &x);
-      err |= clSetKernelArg(linSolveKern, 2, sizeof(cl_mem), &Nborder);
-      err |= clSetKernelArg(linSolveKern, 3, sizeof(cl_mem), &a);
-      err |= clSetKernelArg(linSolveKern, 4, sizeof(cl_mem), &c);
+      err |= clSetKernelArg(linSolveKern, 2, sizeof(cl_int), &Nborder);
+      err |= clSetKernelArg(linSolveKern, 3, sizeof(cl_float), &a);
+      err |= clSetKernelArg(linSolveKern, 4, sizeof(cl_float), &c);
       if (err < 0) {
         perror("Could not create a kernel argument for linSolveKern");
         return; //exit(1);
@@ -363,8 +363,8 @@ namespace octet {
       err = clSetKernelArg(advectKern, 0, sizeof(cl_mem), &d0);
       err |= clSetKernelArg(advectKern, 1, sizeof(cl_mem), &d);
       err |= clSetKernelArg(advectKern, 2, sizeof(cl_mem), &uv);
-      err |= clSetKernelArg(advectKern, 3, sizeof(cl_mem), &Nborder);
-      err |= clSetKernelArg(advectKern, 4, sizeof(cl_mem), &dt0);
+      err |= clSetKernelArg(advectKern, 3, sizeof(cl_int), &Nborder);
+      err |= clSetKernelArg(advectKern, 4, sizeof(cl_float), &dt0);
       if (err < 0) {
         perror("Could not create a kernel argument for advectKern");
         return; //exit(1);
@@ -398,7 +398,7 @@ namespace octet {
       err = clSetKernelArg(clProjectStartKernel, 0, sizeof(cl_mem), &uv);
       err |= clSetKernelArg(clProjectStartKernel, 1, sizeof(cl_mem), &p);
       err |= clSetKernelArg(clProjectStartKernel, 2, sizeof(cl_mem), &div);
-      err |= clSetKernelArg(clProjectStartKernel, 3, sizeof(cl_mem), &Nborder);
+      err |= clSetKernelArg(clProjectStartKernel, 3, sizeof(cl_int), &Nborder);
       if (err < 0) {
         perror("Could not create a kernel argument for clProjectStartKernel");
         return; //exit(1);
@@ -406,7 +406,7 @@ namespace octet {
 
       err = clSetKernelArg(clProjectEndKernel, 0, sizeof(cl_mem), &uv);
       err |= clSetKernelArg(clProjectEndKernel, 1, sizeof(cl_mem), &p);
-      err |= clSetKernelArg(clProjectEndKernel, 2, sizeof(cl_mem), &Nborder);
+      err |= clSetKernelArg(clProjectEndKernel, 2, sizeof(cl_int), &Nborder);
       if (err < 0) {
         perror("Could not create a kernel argument for clProjectEndKernel");
         return; //exit(1);
