@@ -80,6 +80,9 @@ namespace octet {
       err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &dev, NULL);
       if (err == CL_DEVICE_NOT_FOUND) {
         err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &dev, NULL);
+        printf("Creating OpenCL CPU profile.\n");
+      } else {
+        printf("Creating OpenCL GPU profile.\n");
       }
       if (err < 0) {
         printf("Could not access any device");
@@ -145,7 +148,7 @@ namespace octet {
       free(program_buffer);
 
       // Build program
-      err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+      err = clBuildProgram(program, 0, NULL, "-cl-nv-verbose", NULL, NULL);
       if (err < 0) {
         // Find size of log and print to std output
         clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG,
@@ -213,6 +216,14 @@ namespace octet {
       clAdvectFloat2Kernel = createKernel(clProgram, "advect_float2");
       clAdvectFloatKernel = createKernel(clProgram, "advect_float");
     }
+
+    void synch() {
+      cl_int err = clFinish(clQueue);
+
+      if (err < 0) {
+        perror("Error when finishing queue");
+      }
+    }
     
     /*** FLUID DYNAMICS FUNCTIONS ***/
     
@@ -266,7 +277,7 @@ namespace octet {
       if (err < 0) {
         perror("Could not enqueue the kernel");
       }
-      clFinish(clQueue);
+      synch();
     }
 
     void set_bnd ( int N, cl_mem x, cl_kernel setBndKern, cl_kernel setBndEndKern)
@@ -296,12 +307,14 @@ namespace octet {
 
       err |= clEnqueueNDRangeKernel(clQueue, setBndKern, 1, NULL, &global_size,
         &local_size, 0, NULL, NULL);
+      synch();
       err |= clEnqueueNDRangeKernel(clQueue, setBndEndKern, 1, NULL, &end_size,
         &end_size_local, 0, NULL, NULL);
       if (err < 0) {
         perror("Could not enqueue the kernel for set_bnd");
         return; //exit(1);
       }
+      synch();
     } 
 
     void lin_solve(int width, cl_mem x, cl_mem x0, float a, float c,
@@ -335,8 +348,8 @@ namespace octet {
           perror("Could not enqueue the kernel for linSolveKern");
           return; //exit(1);
         }
+        synch();
         set_bnd( width, x, setBndKern, setBndEndKern );
-        clFinish(clQueue);
       }
     }
 
@@ -374,9 +387,8 @@ namespace octet {
         perror("Could not enqueue the kernel for advectKern");
         return; //exit(1);
       }
-
+      synch();
       set_bnd ( N, d, setBndKern, setBndEndKern );
-      clFinish(clQueue);
     }
 
     void project ( int N, cl_mem uv, cl_mem p, cl_mem div )
@@ -417,7 +429,7 @@ namespace octet {
         perror("Could not enqueue the kernel for clProjectStartKernel");
         return; //exit(1);
       }
-
+      synch();
       set_bnd( N, p, clSetBoundFloatKernel, clSetBoundEndFloatKernel );
       set_bnd( N, div, clSetBoundFloatKernel, clSetBoundEndFloatKernel );
 
@@ -429,9 +441,8 @@ namespace octet {
         perror("Could not enqueue the kernel for clProjectEndKernel");
         return; //exit(1);
       }
-
+      synch();
       set_bnd( N, uv, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel );
-      clFinish(clQueue);
     }
 
     /*** DEBUG FUNCTIONS ***/

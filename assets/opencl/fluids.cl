@@ -203,7 +203,7 @@ __kernel void advect_float2(__global float2 *uv0,
             (float2)(0.5f, 0.5f),
             (float2)((data_width-2)+0.5f, (data_width-2)+0.5f));
   pi0 = convert_int2(p);
-  pi1 = pi0 + (float2)(1,1);
+  pi1 = pi0 + (int2)(1,1);
   pf1 = p-pi0;
   pf0 = 1-pf1;
 
@@ -231,7 +231,7 @@ __kernel void advect_float(__global float *arr0,
             (float2)(0.5f, 0.5f),
             (float2)((data_width-2)+0.5f, (data_width-2)+0.5f));
   pi0 = convert_int2(p);
-  pi1 = pi0 + (float2)(1,1);
+  pi1 = pi0 + (int2)(1,1);
   pf1 = p-pi0;
   pf0 = 1-pf1;
 
