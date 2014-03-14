@@ -31,5 +31,6 @@
 #include "../shaders/texture_shader.h"
 #include "../shaders/phong_shader.h"
 #include "../shaders/bump_shader.h"
+#include "../shaders/fluid_shader.h"
 
 #endif

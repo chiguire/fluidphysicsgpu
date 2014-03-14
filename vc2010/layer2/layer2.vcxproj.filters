@@ -346,6 +346,9 @@
     <ClInclude Include="..\..\src\platform\machine_specific.h">
       <Filter>octet\platform</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\shaders\fluid_shader.h">
+      <Filter>octet\shaders</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\src\resources\mesh_builder.inl">

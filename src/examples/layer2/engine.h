@@ -19,7 +19,8 @@ namespace octet {
     typedef vec4 vec4;
 
     // shaders to draw triangles
-    texture_shader tshader;
+    fluid_shader fshader;
+    color_shader cshader;
 
     // helper for drawing text
     //text_overlay overlay;
@@ -48,6 +49,10 @@ namespace octet {
     cl_mem dens0_buffer;
     cl_mem dens1_buffer;
 
+    GLuint fluidPositionsVBO;
+    GLuint fluidIndicesVBO;
+    GLuint densVBO;
+
     // Fluid data
     unsigned int N;
     unsigned int Nborder;
@@ -56,11 +61,6 @@ namespace octet {
     float visc;
     float force;
     float source;
-
-    dynarray <float>uv0;
-    dynarray <float>uv1;
-    dynarray <float>dens0;
-    dynarray <float>dens1;
 
     /*** OPENCL SPECIFIC FUNCTIONS ***/
 
@@ -179,6 +179,26 @@ namespace octet {
       clProgram = buildProgram(clContext, clDeviceID, "assets/opencl/fluids.cl");
 
       // Create data buffer
+      dynarray <float>uv0;
+      dynarray <float>uv1;
+      dynarray <float>dens0;
+      dynarray <float>dens1;
+
+      uv0.resize(size*2);
+      uv1.resize(size*2);
+      dens0.resize(size);
+      dens1.resize(size);
+
+      for (int i = 0; i != size*2; i++) {
+        uv0[i] = 0;
+        uv1[i] = 0;
+      }
+      
+      for (int i = 0; i != size; i++) {
+        dens0[i] = 0;
+        dens1[i] = 0;
+      }
+
       uv0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
         CL_MEM_COPY_HOST_PTR, size * 2 * sizeof(float), uv0.data(), &err);
       dens0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
@@ -217,6 +237,44 @@ namespace octet {
       clAdvectFloatKernel = createKernel(clProgram, "advect_float");
     }
 
+    void initVBO() {
+      dynarray <float>fluidPositions;
+      float fluidLength = 10.0f;
+      float fluidStep = fluidLength/Nborder;
+      for (int i = 0; i != Nborder; i++) {
+        for (int j = 0; j != Nborder; j++) {
+          fluidPositions.push_back(-fluidLength/2.0f+j*fluidStep);
+          fluidPositions.push_back(-fluidLength/2.0f+i*fluidStep);
+          fluidPositions.push_back(0);
+        }
+      }
+      dynarray <unsigned short>fluidIndices;
+      for (int i = 0; i != N+1; i++) {
+        for (int j = 0; j != N+1; j++) {
+          fluidIndices.push_back(Nborder*(j+0)+(i+0));
+          fluidIndices.push_back(Nborder*(j+0)+(i+1));
+          fluidIndices.push_back(Nborder*(j+1)+(i+0));
+
+          fluidIndices.push_back(Nborder*(j+0)+(i+1));
+          fluidIndices.push_back(Nborder*(j+1)+(i+1));
+          fluidIndices.push_back(Nborder*(j+1)+(i+0));
+        }
+      }
+      
+      glGenBuffers(1, &fluidPositionsVBO);
+      glGenBuffers(1, &fluidIndicesVBO);
+      
+      glBindBuffer(GL_ARRAY_BUFFER, fluidPositionsVBO);
+      glBufferData(GL_ARRAY_BUFFER, fluidPositions.size()*sizeof(GLfloat), (void *)fluidPositions.data(), GL_DYNAMIC_DRAW);
+      glVertexPointer(3, GL_FLOAT, 0, 0);
+      glEnableClientState(GL_VERTEX_ARRAY);
+
+      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, fluidIndicesVBO);
+      glBufferData(GL_ELEMENT_ARRAY_BUFFER, fluidIndices.size()*sizeof(GLushort), (void *)fluidIndices.data(), GL_DYNAMIC_DRAW);
+
+
+    }
+
     void synch() {
       cl_int err = clFinish(clQueue);
 
@@ -227,29 +285,20 @@ namespace octet {
     
     /*** FLUID DYNAMICS FUNCTIONS ***/
     
-    void dens_step ( int N, float * x, float * x0, float * uv, float diff, float dt )
+    void dens_step ( int N, cl_mem dens1_buffer, cl_mem dens0_buffer, cl_mem uv0_buffer, float diff, float dt )
     {
-      writeArray(dens0_buffer, x0, (N+2)*(N+2));
-      writeArray(dens1_buffer, x, (N+2)*(N+2));
-      writeArray(uv0_buffer, uv, (N+2)*(N+2)*2);
       add_source(N, dens1_buffer, dens0_buffer, dt, clAddSourceFloatKernel);
       diffuse(N, dens0_buffer, dens1_buffer, diff, dt, clLinSolveFloatKernel, clSetBoundFloatKernel, clSetBoundEndFloatKernel);
       advect(N, dens1_buffer, dens0_buffer, uv0_buffer, dt, clAdvectFloatKernel, clSetBoundFloatKernel, clSetBoundEndFloatKernel);
-      readArray(dens0_buffer, x0, (N+2)*(N+2));
-      readArray(dens1_buffer, x, (N+2)*(N+2));
     }
 
-    void vel_step ( int N, float * uv, float * uv0, float visc, float dt )
+    void vel_step ( int N, cl_mem uv1_buffer, cl_mem uv0_buffer, float visc, float dt )
     {
-      writeArray(uv0_buffer, uv0, (N+2)*(N+2)*2);
-      writeArray(uv1_buffer, uv, (N+2)*(N+2)*2);
       add_source(N, uv1_buffer, uv0_buffer, dt, clAddSourceFloat2Kernel);
       diffuse(N, uv0_buffer, uv1_buffer, visc, dt, clLinSolveFloat2Kernel, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel);
       project (N, uv0_buffer, dens0_buffer, dens1_buffer);
       advect(N, uv1_buffer, uv0_buffer, uv0_buffer, dt, clAdvectFloat2Kernel, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel);
       project(N, uv1_buffer, dens0_buffer, dens1_buffer);
-      readArray(uv0_buffer, uv0, (N+2)*(N+2)*2);
-      readArray(uv1_buffer, uv, (N+2)*(N+2)*2);
     }
 
     void add_source ( int N, cl_mem x, cl_mem s, float dt, cl_kernel clAddSourceKern)
@@ -487,7 +536,8 @@ namespace octet {
     // this is called once OpenGL is initialized
     void app_init() {
       // set up the shaders
-      tshader.init();
+      fshader.init();
+      cshader.init();
 
       N = 16;
       Nborder = N+2;
@@ -497,45 +547,46 @@ namespace octet {
       force = 5.0f;
       source = 100.0f;
 
-      //float a = dt * visc * N * N;
-      //float c = 1 + 4 * a;
-      int size = (Nborder)*(Nborder);
-
-      uv0.resize(size*2);
-      uv1.resize(size*2);
-      dens0.resize(size);
-      dens1.resize(size);
-
-      for (int i = 0; i != size*2; i++) {
-        uv0[i] = 0;
-        uv1[i] = 0;
-      }
-      
-      for (int i = 0; i != size; i++) {
-        dens0[i] = 0;
-        dens1[i] = 0;
-      }
-
       // Create device and context
       initOpenCL();
       
+      initVBO();
+
       //overlay.init();
     }
 
     // this is called to draw the world
     void draw_world(int x, int y, int w, int h) {
-      float *leuv0 = const_cast<float *>(uv0.data());
-      float *leuv1 = const_cast<float *>(uv1.data());
-      float *ledens0 = const_cast<float *>(dens0.data());
-      float *ledens1 = const_cast<float *>(dens1.data());
-      vel_step(N, leuv1, leuv0, visc, dt);
-      dens_step(N, ledens1, ledens0, leuv1, diff, dt);
+      vel_step(N, uv1_buffer, uv0_buffer, visc, dt);
+      dens_step(N, dens1_buffer, dens0_buffer, uv1_buffer, diff, dt);
       //print_float(uv1.data(), Nborder, Nborder, 2);
       //print_float(dens1.data(), Nborder, Nborder, 1);
       
-      //int vx = 0, vy = 0;
-      //get_viewport_size(vx, vy);
+      int vx = 0, vy = 0;
+      get_viewport_size(vx, vy);
+
+      mat4t cameraToWorld;
+      cameraToWorld.translate(0, 0, 10);
+      mat4t worldToCamera;
+      cameraToWorld.invertQuick(worldToCamera);
+
+      mat4t modelToWorld;
+      modelToWorld.loadIdentity();
+
+      mat4t modelToCamera = modelToWorld * worldToCamera;
+
+      mat4t modelToProjection = mat4t::build_projection_matrix(modelToWorld, cameraToWorld, 0.1f, 1000.0f, 0.0f, 0.0f, 0.1f*vy/float(vx));
+
+      //fshader.render(modelToProjection);
+      vec4 color(1.0f, 0.0f, 0.0f, 1.0f);
+      cshader.render(modelToProjection, color);
+      renderFluid();
       //overlay.render(object_shader, skin_shader, vx, vy, get_frame_number());
+
+    }
+
+    void renderFluid() {
+      glDrawElements(GL_TRIANGLES, (N+1)*(N+1)*2, GL_UNSIGNED_SHORT, 0);
     }
   };
 }

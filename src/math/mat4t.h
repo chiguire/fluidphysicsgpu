@@ -469,7 +469,7 @@ namespace octet { namespace math {
       printf("{"); v[0].dump(); printf(", "); v[1].dump(); printf(", "); v[2].dump(); printf(", "); v[3].dump(); printf("}\n");
     }*/
     // helper function for building a simple camera
-    static mat4t build_projection_matrix(const mat4t &modelToWorld, const mat4t &cameraToWorld, float n = 0.1f, float f = 1000.0f)
+    static mat4t build_projection_matrix(const mat4t &modelToWorld, const mat4t &cameraToWorld, float n = 0.1f, float f = 1000.0f, float offsetx = 0.0f, float offsety = 0.0f, float ny = 0.1f)
     {
       // flip it around to transform from world to camera
       mat4t worldToCamera;
@@ -478,7 +478,7 @@ namespace octet { namespace math {
       // build a projection matrix to add perspective
       mat4t cameraToProjection;
       cameraToProjection.loadIdentity();
-      cameraToProjection.frustum(-n, n, -n, n, n, f);
+      cameraToProjection.frustum(-n+offsetx, n+offsetx, -ny+offsety, ny+offsety, n, f);
 
       // model -> world -> camera -> projection
       return modelToWorld * worldToCamera * cameraToProjection;
