@@ -19,7 +19,7 @@ namespace octet {
       static const char * CL_GL_SHARING_EXT = "cl_APPLE_gl_sharing";
 #else
       static const char * CL_GL_SHARING_EXT = "cl_khr_gl_sharing";
-#endif      
+#endif
 
   class engine : public app {
     typedef mat4t mat4t;
@@ -59,7 +59,8 @@ namespace octet {
     GLuint vertexArrayID;
     GLuint fluidPositionsVBO;
     GLuint fluidIndicesVBO;
-    GLuint densityVBO;
+    GLuint fluidDensity0VBO;
+    GLuint fluidDensity1VBO;
 
     // Fluid data
     unsigned int N;
@@ -71,35 +72,6 @@ namespace octet {
     float source;
 
     /*** OPENCL SPECIFIC FUNCTIONS ***/
-
-    cl_device_id createDevice() {
-      cl_platform_id platform;
-      cl_device_id dev;
-      int err;
-
-      // Identify a platform
-      err = clGetPlatformIDs(1, &platform, NULL);
-      if (err < 0) {
-        perror("Could not identify a platform");
-        exit(1);
-      }
-
-      //Access a device
-      err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &dev, NULL);
-      if (err == CL_DEVICE_NOT_FOUND) {
-        err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &dev, NULL);
-        printf("Creating OpenCL CPU profile.\n");
-      } else {
-        printf("Creating OpenCL GPU profile.\n");
-      }
-      if (err < 0) {
-        printf("Could not access any device");
-        exit(1);
-      }
-
-      return dev;
-    }
-
     int isExtensionSupported(const char *support_str, char *ext_string, size_t ext_buffer_size) {
       int offset = 0;
       char *next_token = NULL;
@@ -207,10 +179,54 @@ namespace octet {
 
     void initOpenCL() {
       cl_int err;
-      int size = (Nborder)*(Nborder);
 
-      clDeviceID = createDevice();
-      clContext = clCreateContext(NULL, 1, &clDeviceID, NULL, NULL, &err);
+      cl_platform_id platform;
+      cl_device_id dev;
+      size_t sizet;
+
+      // Identify a platform
+      err = clGetPlatformIDs(1, &platform, NULL);
+      if (err < 0) {
+        perror("Could not identify a platform");
+        exit(1);
+      }
+
+#if defined (__APPLE__) || defined(MACOSX)
+      CGLContextObj kCGLContext = CGLGetCurrentContext();
+      CGLShareGroupObj kCGLShareGroup = CGLGetShareGroup(kCGLContext);
+      cl_context_properties props []= {
+        CL_GL_CONTEXT_KHR, (cl_context_properties)kCGLShareGroup, 0
+      };
+#elif defined _WIN32 || _WIN64
+      cl_context_properties props []= {
+        CL_GL_CONTEXT_KHR, (cl_context_properties)wglGetCurrentContext(),
+        CL_WGL_HDC_KHR, (cl_context_properties)wglGetCurrentDC(),
+        CL_CONTEXT_PLATFORM, (cl_context_properties)platform,
+        0
+      };
+      
+#else
+      //linux
+      cl_context_properties props []= {
+        CL_GL_CONTEXT_KHR, (cl_context_properties)glXGetCurrentContext(),
+        CL_GLX_DISPLAY_KHR, (cl_context_properties)glXGetCurrentDisplay(),
+        CL_CONTEXT_PLATFORM, (cl_context_properties)platform,
+        0
+      };
+#endif
+
+      //Access a device
+      clGetGLContextInfoKHR_fn leFunction = (clGetGLContextInfoKHR_fn)clGetExtensionFunctionAddress("clGetGLContextInfoKHR");
+      err = leFunction(props, CL_CURRENT_DEVICE_FOR_GL_CONTEXT_KHR,
+                            1*sizeof(cl_device_id), &dev, &sizet);
+      if (err < 0) {
+        printf("Could not access any device that could interop CL/GL");
+        exit(1);
+      }
+
+      clDeviceID = dev;
+
+      clContext = clCreateContext(props, 1, &clDeviceID, NULL, NULL, &err);
       if (err < 0) {
         perror("Could not create a context");
         return; //exit(1);
@@ -225,6 +241,7 @@ namespace octet {
       dynarray <float>dens0;
       dynarray <float>dens1;
 
+      int size = (Nborder)*(Nborder);
       uv0.resize(size*2);
       uv1.resize(size*2);
       dens0.resize(size);
@@ -242,12 +259,12 @@ namespace octet {
 
       uv0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
         CL_MEM_COPY_HOST_PTR, size * 2 * sizeof(float), uv0.data(), &err);
-      dens0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
-        CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens0.data(), &err);
+      //dens0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
+      //  CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens0.data(), &err);
       uv1_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
         CL_MEM_COPY_HOST_PTR, size * 2 * sizeof(float), uv1.data(), &err);
-      dens1_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
-        CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens1.data(), &err);
+      //dens1_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
+      //  CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens1.data(), &err);
       if (err < 0) {
         perror("Could not create a buffer");
         return; //exit(1);
@@ -279,6 +296,8 @@ namespace octet {
     }
 
     void initVBO() {
+      cl_int err;
+
       dynarray <float>fluidPositions;
       float fluidLength = 10.0f;
       float fluidStep = fluidLength/Nborder;
@@ -313,7 +332,8 @@ namespace octet {
 
       glGenBuffers(1, &fluidPositionsVBO);
       glGenBuffers(1, &fluidIndicesVBO);
-      glGenBuffers(1, &densityVBO);
+      glGenBuffers(1, &fluidDensity0VBO);
+      glGenBuffers(1, &fluidDensity1VBO);
       
       glBindBuffer(GL_ARRAY_BUFFER, fluidPositionsVBO);
       glBufferData(GL_ARRAY_BUFFER, fluidPositions.size()*sizeof(GLfloat), (void *)fluidPositions.data(), GL_DYNAMIC_DRAW);
@@ -322,10 +342,23 @@ namespace octet {
       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, fluidIndicesVBO);
       glBufferData(GL_ELEMENT_ARRAY_BUFFER, fluidIndices.size()*sizeof(GLushort), (void *)fluidIndices.data(), GL_DYNAMIC_DRAW);
 
-      glBindBuffer(GL_ARRAY_BUFFER, densityVBO);
-      glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_DYNAMIC_DRAW);
+      glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
+      glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_STATIC_DRAW);
       glVertexPointer(1, GL_FLOAT, 0, 0);
+      dens0_buffer = clCreateFromGLBuffer(clContext, CL_MEM_READ_WRITE, fluidDensity0VBO, &err);
+      if (err < 0) {
+        perror("Error creating CL buffer from GL.");
+      }
 
+      glBindBuffer(GL_ARRAY_BUFFER, fluidDensity1VBO);
+      glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_STATIC_DRAW);
+      glVertexPointer(1, GL_FLOAT, 0, 0);
+      dens1_buffer = clCreateFromGLBuffer(clContext, CL_MEM_READ_WRITE, fluidDensity1VBO, &err);
+      if (err < 0) {
+        perror("Error creating CL buffer from GL.");
+      }
+
+      glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
     void synch() {
@@ -602,23 +635,29 @@ namespace octet {
 
       // Create device and context
       initOpenCL();
-      initCLGLSharing();
       initVBO();
+      //initCLGLSharing();
 
       //overlay.init();
     }
 
     // this is called to draw the world
     void draw_world(int x, int y, int w, int h) {
-      vel_step(N, uv1_buffer, uv0_buffer, visc, dt);
-      dens_step(N, dens1_buffer, dens0_buffer, uv1_buffer, diff, dt);
-      
-      //print_float(uv1.data(), Nborder, Nborder, 2);
-      //print_float(dens1.data(), Nborder, Nborder, 1);
-      
       int vx = 0, vy = 0;
       get_viewport_size(vx, vy);
+      
+      calculateFluid();
+      
+      mat4t modelToProjection = setProjection(vx, vy);
 
+      fshader.render(modelToProjection);
+      //vec4 color(1.0f, 0.0f, 0.0f, 1.0f);
+      //cshader.render(modelToProjection, color);
+      renderFluid();
+      //overlay.render(object_shader, skin_shader, vx, vy, get_frame_number());
+    }
+
+   mat4t setProjection(int vx, int vy) {
       mat4t cameraToWorld;
       cameraToWorld.translate(0, 0, 10);
       mat4t worldToCamera;
@@ -628,15 +667,28 @@ namespace octet {
       modelToWorld.loadIdentity();
 
       mat4t modelToCamera = modelToWorld * worldToCamera;
+      return mat4t::build_projection_matrix(modelToWorld, cameraToWorld, 0.1f, 1000.0f, 0.0f, 0.0f, 0.1f*vy/float(vx));
+    } 
 
-      mat4t modelToProjection = mat4t::build_projection_matrix(modelToWorld, cameraToWorld, 0.1f, 1000.0f, 0.0f, 0.0f, 0.1f*vy/float(vx));
+    void calculateFluid() {
+      cl_int err;
 
-      fshader.render(modelToProjection);
-      //vec4 color(1.0f, 0.0f, 0.0f, 1.0f);
-      //cshader.render(modelToProjection, color);
-      renderFluid();
-      //overlay.render(object_shader, skin_shader, vx, vy, get_frame_number());
+      glFlush();
+      err = clEnqueueAcquireGLObjects(clQueue, 1, &dens0_buffer, NULL, NULL, NULL);
+      err = clEnqueueAcquireGLObjects(clQueue, 1, &dens1_buffer, NULL, NULL, NULL);
+      if (err < 0) {
+        perror("Error acquiring GL objects.");
+      }
 
+      vel_step(N, uv1_buffer, uv0_buffer, visc, dt);
+      dens_step(N, dens1_buffer, dens0_buffer, uv1_buffer, diff, dt);
+
+      err = clEnqueueReleaseGLObjects(clQueue, 1, &dens0_buffer, NULL, NULL, NULL);
+      err = clEnqueueReleaseGLObjects(clQueue, 1, &dens1_buffer, NULL, NULL, NULL);
+      if (err < 0) {
+        perror("Error releasing GL objects.");
+      }
+      err = clFlush(clQueue);
     }
 
     void renderFluid() {
@@ -645,14 +697,15 @@ namespace octet {
       glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
       
       glEnableVertexAttribArray(attribute_uv);
-      glBindBuffer(GL_ARRAY_BUFFER, densityVBO);
+      glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
       glVertexAttribPointer(attribute_uv, 1, GL_FLOAT, GL_FALSE, 0, (void *)0);
       
       glDrawElements(GL_TRIANGLES, (N+1)*(N+1)*2*3, GL_UNSIGNED_SHORT, 0);
       
-      glFinish();
+      glFlush();
 
       glDisableVertexAttribArray(attribute_pos);
+      glDisableVertexAttribArray(attribute_uv);
     }
   };
 }
