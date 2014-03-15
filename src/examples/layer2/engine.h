@@ -14,6 +14,13 @@
 // http://www.drdobbs.com/parallel/a-gentle-introduction-to-opencl/231002854?pgno=3
 
 namespace octet {
+
+#if defined (__APPLE__) || defined(MACOSX)
+      static const char * CL_GL_SHARING_EXT = "cl_APPLE_gl_sharing";
+#else
+      static const char * CL_GL_SHARING_EXT = "cl_khr_gl_sharing";
+#endif      
+
   class engine : public app {
     typedef mat4t mat4t;
     typedef vec4 vec4;
@@ -49,9 +56,10 @@ namespace octet {
     cl_mem dens0_buffer;
     cl_mem dens1_buffer;
 
+    GLuint vertexArrayID;
     GLuint fluidPositionsVBO;
     GLuint fluidIndicesVBO;
-    GLuint densVBO;
+    GLuint densityVBO;
 
     // Fluid data
     unsigned int N;
@@ -90,6 +98,39 @@ namespace octet {
       }
 
       return dev;
+    }
+
+    int isExtensionSupported(const char *support_str, char *ext_string, size_t ext_buffer_size) {
+      int offset = 0;
+      char *next_token = NULL;
+
+      char *token = strtok_s(ext_string, " ", &next_token);
+
+      while (token != NULL) {
+        //Check
+        if (strncmp(token, support_str, ext_buffer_size) == 0) {
+          return 1;
+        }
+        token = strtok_s(NULL, " ", &next_token);
+      }
+      return 0;
+    }
+
+    void initCLGLSharing() {
+       //Test extension
+      char ext_string[1024];
+      size_t ext_size = 1024;
+      cl_int err = clGetDeviceInfo(clDeviceID, CL_DEVICE_EXTENSIONS, 1024, ext_string, &ext_size);
+
+      int supported = isExtensionSupported(CL_GL_SHARING_EXT, ext_string, ext_size);
+      if (!supported) {
+        printf("Not found GL Sharing Support.\n");
+        return;
+      }
+      printf("Found GL Sharing Support.\n");
+
+
+
     }
 
     cl_kernel createKernel(cl_program prg, const char *kernel_name) {
@@ -261,17 +302,29 @@ namespace octet {
         }
       }
       
+      dynarray <float>fluidDensity;
+      fluidDensity.resize(Nborder*Nborder);
+      /*for (int i = 0; i != Nborder*Nborder; i++) {
+        fluidDensity[i] = 1.0f;
+      }*/
+      
+      glGenVertexArrays(1, &vertexArrayID);
+      glBindVertexArray(vertexArrayID);
+
       glGenBuffers(1, &fluidPositionsVBO);
       glGenBuffers(1, &fluidIndicesVBO);
+      glGenBuffers(1, &densityVBO);
       
       glBindBuffer(GL_ARRAY_BUFFER, fluidPositionsVBO);
       glBufferData(GL_ARRAY_BUFFER, fluidPositions.size()*sizeof(GLfloat), (void *)fluidPositions.data(), GL_DYNAMIC_DRAW);
       glVertexPointer(3, GL_FLOAT, 0, 0);
-      glEnableClientState(GL_VERTEX_ARRAY);
 
       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, fluidIndicesVBO);
       glBufferData(GL_ELEMENT_ARRAY_BUFFER, fluidIndices.size()*sizeof(GLushort), (void *)fluidIndices.data(), GL_DYNAMIC_DRAW);
 
+      glBindBuffer(GL_ARRAY_BUFFER, densityVBO);
+      glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_DYNAMIC_DRAW);
+      glVertexPointer(1, GL_FLOAT, 0, 0);
 
     }
 
@@ -537,7 +590,7 @@ namespace octet {
     void app_init() {
       // set up the shaders
       fshader.init();
-      cshader.init();
+      //cshader.init();
 
       N = 16;
       Nborder = N+2;
@@ -549,7 +602,7 @@ namespace octet {
 
       // Create device and context
       initOpenCL();
-      
+      initCLGLSharing();
       initVBO();
 
       //overlay.init();
@@ -559,6 +612,7 @@ namespace octet {
     void draw_world(int x, int y, int w, int h) {
       vel_step(N, uv1_buffer, uv0_buffer, visc, dt);
       dens_step(N, dens1_buffer, dens0_buffer, uv1_buffer, diff, dt);
+      
       //print_float(uv1.data(), Nborder, Nborder, 2);
       //print_float(dens1.data(), Nborder, Nborder, 1);
       
@@ -577,16 +631,28 @@ namespace octet {
 
       mat4t modelToProjection = mat4t::build_projection_matrix(modelToWorld, cameraToWorld, 0.1f, 1000.0f, 0.0f, 0.0f, 0.1f*vy/float(vx));
 
-      //fshader.render(modelToProjection);
-      vec4 color(1.0f, 0.0f, 0.0f, 1.0f);
-      cshader.render(modelToProjection, color);
+      fshader.render(modelToProjection);
+      //vec4 color(1.0f, 0.0f, 0.0f, 1.0f);
+      //cshader.render(modelToProjection, color);
       renderFluid();
       //overlay.render(object_shader, skin_shader, vx, vy, get_frame_number());
 
     }
 
     void renderFluid() {
-      glDrawElements(GL_TRIANGLES, (N+1)*(N+1)*2, GL_UNSIGNED_SHORT, 0);
+      glEnableVertexAttribArray(attribute_pos);
+      glBindBuffer(GL_ARRAY_BUFFER, fluidPositionsVBO);
+      glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
+      
+      glEnableVertexAttribArray(attribute_uv);
+      glBindBuffer(GL_ARRAY_BUFFER, densityVBO);
+      glVertexAttribPointer(attribute_uv, 1, GL_FLOAT, GL_FALSE, 0, (void *)0);
+      
+      glDrawElements(GL_TRIANGLES, (N+1)*(N+1)*2*3, GL_UNSIGNED_SHORT, 0);
+      
+      glFinish();
+
+      glDisableVertexAttribArray(attribute_pos);
     }
   };
 }
