@@ -71,6 +71,8 @@ namespace octet {
     float force;
     float source;
 
+    float *intermediateBuffer;
+
     /*** OPENCL SPECIFIC FUNCTIONS ***/
     int isExtensionSupported(const char *support_str, char *ext_string, size_t ext_buffer_size) {
       int offset = 0;
@@ -253,18 +255,24 @@ namespace octet {
       }
       
       for (int i = 0; i != size; i++) {
-        dens0[i] = 0;
-        dens1[i] = 0;
+        if (i > size/2 && i < 3*size/4) {
+          dens0[i] = 1;
+          dens1[i] = 1;
+        } else {
+          dens0[i] = 0;
+          dens1[i] = 0;
+        }
       }
+      print_float(dens0.data(), Nborder, Nborder, 1);
 
       uv0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
         CL_MEM_COPY_HOST_PTR, size * 2 * sizeof(float), uv0.data(), &err);
-      //dens0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
-      //  CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens0.data(), &err);
+      dens0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
+        CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens0.data(), &err);
       uv1_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
         CL_MEM_COPY_HOST_PTR, size * 2 * sizeof(float), uv1.data(), &err);
-      //dens1_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
-      //  CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens1.data(), &err);
+      dens1_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
+        CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens1.data(), &err);
       if (err < 0) {
         perror("Could not create a buffer");
         return; //exit(1);
@@ -343,26 +351,26 @@ namespace octet {
       glBufferData(GL_ELEMENT_ARRAY_BUFFER, fluidIndices.size()*sizeof(GLushort), (void *)fluidIndices.data(), GL_DYNAMIC_DRAW);
 
       glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
-      glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_STATIC_DRAW);
+      glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_DYNAMIC_DRAW);
       glVertexPointer(1, GL_FLOAT, 0, 0);
-      dens0_buffer = clCreateFromGLBuffer(clContext, CL_MEM_READ_WRITE, fluidDensity0VBO, &err);
+      /*dens0_buffer = clCreateFromGLBuffer(clContext, CL_MEM_READ_WRITE, fluidDensity0VBO, &err);
       if (err < 0) {
         perror("Error creating CL buffer from GL.");
-      }
+      }*/
 
       glBindBuffer(GL_ARRAY_BUFFER, fluidDensity1VBO);
       glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_STATIC_DRAW);
       glVertexPointer(1, GL_FLOAT, 0, 0);
-      dens1_buffer = clCreateFromGLBuffer(clContext, CL_MEM_READ_WRITE, fluidDensity1VBO, &err);
+     /* dens1_buffer = clCreateFromGLBuffer(clContext, CL_MEM_READ_WRITE, fluidDensity1VBO, &err);
       if (err < 0) {
         perror("Error creating CL buffer from GL.");
-      }
+      }*/
 
       glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
     void synch() {
-      cl_int err = clFinish(clQueue);
+      cl_int err = clFlush(clQueue);
 
       if (err < 0) {
         perror("Error when finishing queue");
@@ -617,6 +625,7 @@ namespace octet {
       clReleaseCommandQueue(clQueue);
       clReleaseProgram(clProgram);
       clReleaseContext(clContext);
+      free(intermediateBuffer);
     }
 
     // this is called once OpenGL is initialized
@@ -625,13 +634,15 @@ namespace octet {
       fshader.init();
       //cshader.init();
 
-      N = 16;
+      N = 8;
       Nborder = N+2;
       dt = 0.1f;
       diff = 0.0f;
       visc = 0.0f;
       force = 5.0f;
       source = 100.0f;
+
+      intermediateBuffer = (float *)malloc(Nborder*Nborder*sizeof(float));
 
       // Create device and context
       initOpenCL();
@@ -671,24 +682,28 @@ namespace octet {
     } 
 
     void calculateFluid() {
-      cl_int err;
+      //cl_int err;
 
-      glFlush();
-      err = clEnqueueAcquireGLObjects(clQueue, 1, &dens0_buffer, NULL, NULL, NULL);
+      /*err = clEnqueueAcquireGLObjects(clQueue, 1, &dens0_buffer, NULL, NULL, NULL);
       err = clEnqueueAcquireGLObjects(clQueue, 1, &dens1_buffer, NULL, NULL, NULL);
       if (err < 0) {
         perror("Error acquiring GL objects.");
-      }
+      }*/
 
       vel_step(N, uv1_buffer, uv0_buffer, visc, dt);
       dens_step(N, dens1_buffer, dens0_buffer, uv1_buffer, diff, dt);
 
-      err = clEnqueueReleaseGLObjects(clQueue, 1, &dens0_buffer, NULL, NULL, NULL);
+      readArray(dens0_buffer, intermediateBuffer, Nborder*Nborder);
+      print_float(intermediateBuffer, Nborder, Nborder, 1);
+      glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
+      glBufferSubData(GL_ARRAY_BUFFER, 0, Nborder*Nborder, intermediateBuffer);
+
+      /*err = clEnqueueReleaseGLObjects(clQueue, 1, &dens0_buffer, NULL, NULL, NULL);
       err = clEnqueueReleaseGLObjects(clQueue, 1, &dens1_buffer, NULL, NULL, NULL);
       if (err < 0) {
         perror("Error releasing GL objects.");
       }
-      err = clFlush(clQueue);
+      err = clFlush(clQueue);*/
     }
 
     void renderFluid() {
