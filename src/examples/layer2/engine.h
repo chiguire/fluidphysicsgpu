@@ -374,6 +374,24 @@ namespace octet {
 
       if (err < 0) {
         perror("Error when finishing queue");
+      } else {
+        printf(">>> Synch()\nDensity 0\n");
+        readArray(dens0_buffer, intermediateBuffer, Nborder*Nborder);
+        print_float(intermediateBuffer, Nborder, Nborder, 1);
+        
+        printf("\nDensity 1\n");
+        readArray(dens1_buffer, intermediateBuffer, Nborder*Nborder);
+        print_float(intermediateBuffer, Nborder, Nborder, 1);
+
+        printf("\nVelocities 0\n");
+        readArray(uv0_buffer, intermediateBuffer, Nborder*Nborder*2);
+        print_float(intermediateBuffer, Nborder, Nborder, 2);
+
+        printf("\nVelocities 1\n");
+        readArray(uv1_buffer, intermediateBuffer, Nborder*Nborder*2);
+        print_float(intermediateBuffer, Nborder, Nborder, 2);
+
+        printf("<<< Synch()\n\n");
       }
     }
     
@@ -642,7 +660,7 @@ namespace octet {
       force = 5.0f;
       source = 100.0f;
 
-      intermediateBuffer = (float *)malloc(Nborder*Nborder*sizeof(float));
+      intermediateBuffer = (float *)malloc(Nborder*Nborder*sizeof(float)*2);
 
       // Create device and context
       initOpenCL();
@@ -694,6 +712,7 @@ namespace octet {
       dens_step(N, dens1_buffer, dens0_buffer, uv1_buffer, diff, dt);
 
       readArray(dens0_buffer, intermediateBuffer, Nborder*Nborder);
+      printf("Final result\n");
       print_float(intermediateBuffer, Nborder, Nborder, 1);
       glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
       glBufferSubData(GL_ARRAY_BUFFER, 0, Nborder*Nborder, intermediateBuffer);
