@@ -40,6 +40,24 @@ __kernel void lin_solve_float2(__global float2* prev,
   curr[idx11] = (prev[idx11] + a*(curr[idx01]+curr[idx21]+curr[idx10]+curr[idx12]))/c;
 }
 
+__kernel void lin_solve_float2_ip(__global float2* arr,
+                                  __global float2* unused,
+                                  int data_width,
+                                  float a,
+                                  float c) {
+
+  uint global_addr_x, global_addr_y, idx11, idx01, idx21, idx10, idx12;
+  global_addr_x = get_global_id(0)+1;
+  global_addr_y = get_global_id(1)+1;
+  idx11 = (global_addr_y)*(data_width)+(global_addr_x);
+  idx01 = (global_addr_y)*(data_width)+(global_addr_x-1);
+  idx21 = (global_addr_y)*(data_width)+(global_addr_x+1);
+  idx10 = (global_addr_y-1)*(data_width)+(global_addr_x);
+  idx12 = (global_addr_y+1)*(data_width)+(global_addr_x);
+
+  arr[idx11].x = (arr[idx11].y + a*(arr[idx01].y+arr[idx21].y+arr[idx10].y+arr[idx12].y))/c;
+}
+
 /* Call with one dimension work item, equals to fluid width */
 __kernel void set_bnd_float2(__global float2 *arr,
                              int data_width) {
@@ -154,9 +172,8 @@ __kernel void set_bnd_float_end(__global float *arr,
 }
 
 /** PROJECT **/
-__kernel void project_start(__global float2 *uv,
-                            __global float *p0,
-                            __global float *p1,
+__kernel void project_start(__global float2 *uv1,
+                            __global float2 *uv0,
                             int data_width) {
   uint global_addr_x, global_addr_y, idx11, idx01, idx21, idx10, idx12;
   global_addr_x = get_global_id(0)+1;
@@ -167,12 +184,12 @@ __kernel void project_start(__global float2 *uv,
   idx10 = (global_addr_y-1)*(data_width)+(global_addr_x);
   idx12 = (global_addr_y+1)*(data_width)+(global_addr_x);
 
-  p0[idx11] = -0.5f*(uv[idx21].x-uv[idx01].x+uv[idx12].y-uv[idx10].y)/(data_width-2);
-  p1[idx11] = 0;
+  uv0[idx11].x = -0.5f*(uv1[idx21].x-uv1[idx01].x+uv1[idx12].y-uv1[idx10].y)/(data_width-2);
+  uv0[idx11].y = 0;
 }
 
-__kernel void project_end(__global float2 *uv,
-                          __global float *p,
+__kernel void project_end(__global float2 *uv1,
+                          __global float2 *uv0,
                           int data_width) {
   uint global_addr_x, global_addr_y, idx11, idx01, idx21, idx10, idx12;
   global_addr_x = get_global_id(0)+1;
@@ -183,8 +200,8 @@ __kernel void project_end(__global float2 *uv,
   idx10 = (global_addr_y-1)*(data_width)+(global_addr_x);
   idx12 = (global_addr_y+1)*(data_width)+(global_addr_x);
 
-  uv[idx11] -= (float2)(0.5f*(data_width-2)*(p[idx21]-p[idx01]),
-                        0.5f*(data_width-2)*(p[idx12]-p[idx10]));
+  uv1[idx11] -= (float2)(0.5f*(data_width-2)*(uv0[idx21].x-uv0[idx01].x),
+                         0.5f*(data_width-2)*(uv0[idx12].x-uv0[idx10].x));
 }
 
 /** ADVECT **/

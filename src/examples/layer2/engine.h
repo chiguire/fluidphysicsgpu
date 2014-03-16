@@ -38,6 +38,7 @@ namespace octet {
     cl_program clProgram;
     cl_kernel clAddSourceFloat2Kernel;
     cl_kernel clLinSolveFloat2Kernel;
+    cl_kernel clLinSolveFloat2ipKernel;
     cl_kernel clSetBoundFloat2Kernel;
     cl_kernel clSetBoundEndFloat2Kernel;
     cl_kernel clAddSourceFloatKernel;
@@ -71,7 +72,14 @@ namespace octet {
     float force;
     float source;
 
-    float *intermediateBuffer;
+    int win_x, win_y;
+    int mouse_down[3];
+    int omx, omy, mx, my;
+
+    int dvel;
+
+    float *uvArray;
+    float *dArray;
 
     /*** OPENCL SPECIFIC FUNCTIONS ***/
     int isExtensionSupported(const char *support_str, char *ext_string, size_t ext_buffer_size) {
@@ -255,13 +263,8 @@ namespace octet {
       }
       
       for (int i = 0; i != size; i++) {
-        if (i > size/2 && i < 3*size/4) {
-          dens0[i] = 1;
-          dens1[i] = 1;
-        } else {
-          dens0[i] = 0;
-          dens1[i] = 0;
-        }
+        dens0[i] = 50;
+        dens1[i] = 50;
       }
       print_float(dens0.data(), Nborder, Nborder, 1);
 
@@ -288,6 +291,7 @@ namespace octet {
       // Create a Kernel
       clAddSourceFloat2Kernel = createKernel(clProgram, "add_source_float2");
       clLinSolveFloat2Kernel = createKernel(clProgram, "lin_solve_float2");
+      clLinSolveFloat2ipKernel = createKernel(clProgram, "lin_solve_float2_ip");
       clSetBoundFloat2Kernel = createKernel(clProgram, "set_bnd_float2");
       clSetBoundEndFloat2Kernel = createKernel(clProgram, "set_bnd_float2_end");
       
@@ -307,7 +311,7 @@ namespace octet {
       cl_int err;
 
       dynarray <float>fluidPositions;
-      float fluidLength = 10.0f;
+      float fluidLength = 18.0f;
       float fluidStep = fluidLength/Nborder;
       for (int i = 0; i != Nborder; i++) {
         for (int j = 0; j != Nborder; j++) {
@@ -331,9 +335,9 @@ namespace octet {
       
       dynarray <float>fluidDensity;
       fluidDensity.resize(Nborder*Nborder);
-      /*for (int i = 0; i != Nborder*Nborder; i++) {
-        fluidDensity[i] = 1.0f;
-      }*/
+      for (int i = 0; i != Nborder*Nborder; i++) {
+        fluidDensity[i] = 50.0f;
+      }
       
       glGenVertexArrays(1, &vertexArrayID);
       glBindVertexArray(vertexArrayID);
@@ -359,7 +363,7 @@ namespace octet {
       }*/
 
       glBindBuffer(GL_ARRAY_BUFFER, fluidDensity1VBO);
-      glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_STATIC_DRAW);
+      glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_DYNAMIC_DRAW);
       glVertexPointer(1, GL_FLOAT, 0, 0);
      /* dens1_buffer = clCreateFromGLBuffer(clContext, CL_MEM_READ_WRITE, fluidDensity1VBO, &err);
       if (err < 0) {
@@ -369,29 +373,29 @@ namespace octet {
       glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
-    void synch() {
+    void synch(bool print_debug = true) {
       cl_int err = clFlush(clQueue);
 
       if (err < 0) {
         perror("Error when finishing queue");
-      } else {
-        printf(">>> Synch()\nDensity 0\n");
-        readArray(dens0_buffer, intermediateBuffer, Nborder*Nborder);
-        print_float(intermediateBuffer, Nborder, Nborder, 1);
+      } else if (print_debug) {
+        /*printf(">>> Synch()\nDensity 0\n");
+        readArray(dens0_buffer, dArray, Nborder*Nborder);
+        print_float(dArray, Nborder, Nborder, 1);
         
         printf("\nDensity 1\n");
-        readArray(dens1_buffer, intermediateBuffer, Nborder*Nborder);
-        print_float(intermediateBuffer, Nborder, Nborder, 1);
+        readArray(dens1_buffer, dArray, Nborder*Nborder);
+        print_float(dArray, Nborder, Nborder, 1);
 
         printf("\nVelocities 0\n");
-        readArray(uv0_buffer, intermediateBuffer, Nborder*Nborder*2);
-        print_float(intermediateBuffer, Nborder, Nborder, 2);
+        readArray(uv0_buffer, uvArray, Nborder*Nborder*2);
+        print_float(uvArray, Nborder, Nborder, 2);
 
         printf("\nVelocities 1\n");
-        readArray(uv1_buffer, intermediateBuffer, Nborder*Nborder*2);
-        print_float(intermediateBuffer, Nborder, Nborder, 2);
+        readArray(uv1_buffer, uvArray, Nborder*Nborder*2);
+        print_float(uvArray, Nborder, Nborder, 2);
 
-        printf("<<< Synch()\n\n");
+        printf("<<< Synch()\n\n");*/
       }
     }
     
@@ -408,9 +412,9 @@ namespace octet {
     {
       add_source(N, uv1_buffer, uv0_buffer, dt, clAddSourceFloat2Kernel);
       diffuse(N, uv0_buffer, uv1_buffer, visc, dt, clLinSolveFloat2Kernel, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel);
-      project (N, uv0_buffer, dens0_buffer, dens1_buffer);
+      project(N, uv0_buffer, uv1_buffer);
       advect(N, uv1_buffer, uv0_buffer, uv0_buffer, dt, clAdvectFloat2Kernel, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel);
-      project(N, uv1_buffer, dens0_buffer, dens1_buffer);
+      project(N, uv1_buffer, uv0_buffer);
     }
 
     void add_source ( int N, cl_mem x, cl_mem s, float dt, cl_kernel clAddSourceKern)
@@ -509,7 +513,7 @@ namespace octet {
           perror("Could not enqueue the kernel for linSolveKern");
           return; //exit(1);
         }
-        synch();
+        synch(false);
         set_bnd( width, x, setBndKern, setBndEndKern );
       }
     }
@@ -552,7 +556,7 @@ namespace octet {
       set_bnd ( N, d, setBndKern, setBndEndKern );
     }
 
-    void project ( int N, cl_mem uv, cl_mem p, cl_mem div )
+    void project ( int N, cl_mem uv1, cl_mem uv0 )
     {
       cl_int err;
       int k = 0;
@@ -567,17 +571,16 @@ namespace octet {
       float c = 4.0f;
       
       // Create Kernel Arguments
-      err = clSetKernelArg(clProjectStartKernel, 0, sizeof(cl_mem), &uv);
-      err |= clSetKernelArg(clProjectStartKernel, 1, sizeof(cl_mem), &p);
-      err |= clSetKernelArg(clProjectStartKernel, 2, sizeof(cl_mem), &div);
-      err |= clSetKernelArg(clProjectStartKernel, 3, sizeof(cl_int), &Nborder);
+      err = clSetKernelArg(clProjectStartKernel, 0, sizeof(cl_mem), &uv1);
+      err |= clSetKernelArg(clProjectStartKernel, 1, sizeof(cl_mem), &uv0);
+      err |= clSetKernelArg(clProjectStartKernel, 2, sizeof(cl_int), &Nborder);
       if (err < 0) {
         perror("Could not create a kernel argument for clProjectStartKernel");
         return; //exit(1);
       }
 
-      err = clSetKernelArg(clProjectEndKernel, 0, sizeof(cl_mem), &uv);
-      err |= clSetKernelArg(clProjectEndKernel, 1, sizeof(cl_mem), &p);
+      err = clSetKernelArg(clProjectEndKernel, 0, sizeof(cl_mem), &uv1);
+      err |= clSetKernelArg(clProjectEndKernel, 1, sizeof(cl_mem), &uv0);
       err |= clSetKernelArg(clProjectEndKernel, 2, sizeof(cl_int), &Nborder);
       if (err < 0) {
         perror("Could not create a kernel argument for clProjectEndKernel");
@@ -591,10 +594,9 @@ namespace octet {
         return; //exit(1);
       }
       synch();
-      set_bnd( N, p, clSetBoundFloatKernel, clSetBoundEndFloatKernel );
-      set_bnd( N, div, clSetBoundFloatKernel, clSetBoundEndFloatKernel );
+      set_bnd( N, uv0, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel );
 
-      lin_solve ( N, p, div, 1.0f, 4.0f, clLinSolveFloatKernel, clSetBoundFloatKernel, clSetBoundEndFloatKernel);
+      lin_solve ( N, uv0, uv0, 1.0f, 4.0f, clLinSolveFloat2ipKernel, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel);
 
       err = clEnqueueNDRangeKernel(clQueue, clProjectEndKernel, 2, NULL, global_size,
           local_size, 0, NULL, NULL);
@@ -603,7 +605,38 @@ namespace octet {
         return; //exit(1);
       }
       synch();
-      set_bnd( N, uv, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel );
+      set_bnd( N, uv1, clSetBoundFloat2Kernel, clSetBoundEndFloat2Kernel );
+    }
+
+    /*** UI FUNCTIONS ***/
+    void get_from_UI ( float * d, float * uv )
+    {
+      int i, j, size = (N+2)*(N+2);
+
+      memset(uv, 0, size*2);
+      memset(d, 0, size);
+
+      if ( !mouse_down[0] && !mouse_down[2] ) return;
+
+      i = (int)((       mx /(float)win_x)*N+1);
+      j = (int)(((win_y-my)/(float)win_y)*N+1);
+      
+      if ( i<1 || i>N || j<1 || j>N ) return;
+
+      if ( mouse_down[0] ) {
+        uv[j*2*Nborder+i*2]   = force * (mx-omx);
+        uv[j*2*Nborder+i*2+1] = force * (omy-my);
+        printf("Force: (%g, %g)\n", uv[j*2*Nborder+i*2], uv[j*2*Nborder+i*2+1]);
+      }
+
+      if ( mouse_down[2] ) {
+        d[j*Nborder+i] = source;
+      }
+
+      omx = mx;
+      omy = my;
+
+      return;
     }
 
     /*** DEBUG FUNCTIONS ***/
@@ -613,7 +646,7 @@ namespace octet {
       int j = 0;
       int size = height*width*num_comp;
       for (int i = 0; i != size; i++) {
-        if (!(i%width)) printf("\n");
+        if (!(i%(width*num_comp))) printf("\n");
         if (num_comp > 1) {
           if (j == 0) printf("(");
         }
@@ -643,14 +676,15 @@ namespace octet {
       clReleaseCommandQueue(clQueue);
       clReleaseProgram(clProgram);
       clReleaseContext(clContext);
-      free(intermediateBuffer);
+      free(uvArray);
+      free(dArray);
     }
 
     // this is called once OpenGL is initialized
     void app_init() {
       // set up the shaders
       fshader.init();
-      //cshader.init();
+      cshader.init();
 
       N = 8;
       Nborder = N+2;
@@ -660,7 +694,10 @@ namespace octet {
       force = 5.0f;
       source = 100.0f;
 
-      intermediateBuffer = (float *)malloc(Nborder*Nborder*sizeof(float)*2);
+      dvel = 0;
+
+      uvArray = (float *)malloc(Nborder*Nborder*sizeof(float)*2);
+      dArray = (float *)malloc(Nborder*Nborder*sizeof(float));
 
       // Create device and context
       initOpenCL();
@@ -670,19 +707,44 @@ namespace octet {
       //overlay.init();
     }
 
+    void readMouse() {
+      omx = mx;
+      omy = my;
+      get_mouse_pos(mx, my);
+      
+      mouse_down[0] = is_key_down(key_lmb);
+      mouse_down[1] = is_key_down(key_mmb);
+      mouse_down[2] = is_key_down(key_rmb);
+
+      if (is_key_down('Z')) {
+        dvel = dvel? 0: 1;
+        printf("Changing dvel to %d\n", dvel);
+      }
+    }
+
     // this is called to draw the world
     void draw_world(int x, int y, int w, int h) {
       int vx = 0, vy = 0;
       get_viewport_size(vx, vy);
-      
+      win_x = vx;
+      win_y = vy;
+
+      glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
+      glClear(GL_COLOR_BUFFER_BIT);
+
+      readMouse();
       calculateFluid();
       
       mat4t modelToProjection = setProjection(vx, vy);
 
-      fshader.render(modelToProjection);
-      //vec4 color(1.0f, 0.0f, 0.0f, 1.0f);
-      //cshader.render(modelToProjection, color);
-      renderFluid();
+      if (dvel) {
+        vec4 color(1.0f, 0.0f, 0.0f, 1.0f);
+        cshader.render(modelToProjection, color);
+        renderVelocities();
+      } else {
+        fshader.render(modelToProjection);
+        renderFluid();
+      }
       //overlay.render(object_shader, skin_shader, vx, vy, get_frame_number());
     }
 
@@ -707,15 +769,19 @@ namespace octet {
       if (err < 0) {
         perror("Error acquiring GL objects.");
       }*/
+      get_from_UI ( dArray, uvArray );
+      writeArray(dens0_buffer, dArray, Nborder*Nborder);
+      writeArray(uv0_buffer, uvArray, Nborder*Nborder*2);
 
       vel_step(N, uv1_buffer, uv0_buffer, visc, dt);
       dens_step(N, dens1_buffer, dens0_buffer, uv1_buffer, diff, dt);
 
-      readArray(dens0_buffer, intermediateBuffer, Nborder*Nborder);
-      printf("Final result\n");
-      print_float(intermediateBuffer, Nborder, Nborder, 1);
+      readArray(dens0_buffer, dArray, Nborder*Nborder);
+      readArray(uv1_buffer, uvArray, Nborder*Nborder*2);
+      //printf("Final result\n");
+      //print_float(dArray, Nborder, Nborder, 1);
       glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
-      glBufferSubData(GL_ARRAY_BUFFER, 0, Nborder*Nborder, intermediateBuffer);
+      glBufferSubData(GL_ARRAY_BUFFER, 0, Nborder*Nborder*sizeof(GLfloat), dArray);
 
       /*err = clEnqueueReleaseGLObjects(clQueue, 1, &dens0_buffer, NULL, NULL, NULL);
       err = clEnqueueReleaseGLObjects(clQueue, 1, &dens1_buffer, NULL, NULL, NULL);
@@ -734,12 +800,41 @@ namespace octet {
       glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
       glVertexAttribPointer(attribute_uv, 1, GL_FLOAT, GL_FALSE, 0, (void *)0);
       
+      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, fluidIndicesVBO);
       glDrawElements(GL_TRIANGLES, (N+1)*(N+1)*2*3, GL_UNSIGNED_SHORT, 0);
       
       glFlush();
 
       glDisableVertexAttribArray(attribute_pos);
       glDisableVertexAttribArray(attribute_uv);
+    }
+
+    void renderVelocities() {
+      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+      glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+      float fluidLength = 18.0f;
+      float fluidStep = fluidLength/Nborder;
+
+      dynarray <float> positions;
+      positions.resize(Nborder*Nborder*3*2);
+      for (int i = 0; i != Nborder; i++) {
+        for (int j = 0; j != Nborder; j++) {
+          positions[(j*Nborder+i)*6+0] = -fluidLength/2.0f+j*fluidStep;
+          positions[(j*Nborder+i)*6+1] = -fluidLength/2.0f+i*fluidStep;
+          positions[(j*Nborder+i)*6+2] = 0;
+
+          positions[(j*Nborder+i)*6+3] = -fluidLength/2.0f+j*fluidStep + uvArray[j*2*Nborder+i*2];
+          positions[(j*Nborder+i)*6+4] = -fluidLength/2.0f+i*fluidStep + uvArray[j*2*Nborder+i*2+1];
+          positions[(j*Nborder+i)*6+5] = 0;
+        }
+      }
+
+      glEnableVertexAttribArray(attribute_pos);
+      glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, positions.data());
+      glDrawArrays(GL_LINES, 0, Nborder*Nborder*2);
+      glFlush();
+      glDisableVertexAttribArray(attribute_pos);
     }
   };
 }
