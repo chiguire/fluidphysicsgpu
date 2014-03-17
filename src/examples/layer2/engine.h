@@ -126,14 +126,14 @@ namespace octet {
     }
 
     void writeArray(cl_mem dst, float *src, unsigned int size) {
-      cl_int err = clEnqueueWriteBuffer(clQueue, dst, CL_TRUE, 0, size*sizeof(float), (void *)src, 0, NULL, NULL);
+      cl_int err = clEnqueueWriteBuffer(clQueue, dst, CL_TRUE, 0, size*sizeof(cl_float), (void *)src, 0, NULL, NULL);
       if (err < 0) {
         printf("Could not write array.");
       }
     }
 
     void readArray(cl_mem src, float *dst, unsigned int size) {
-      cl_int err = clEnqueueReadBuffer(clQueue, src, CL_TRUE, 0, size*sizeof(float), (void *)dst, 0, NULL, NULL);
+      cl_int err = clEnqueueReadBuffer(clQueue, src, CL_TRUE, 0, size*sizeof(cl_float), (void *)dst, 0, NULL, NULL);
       if (err < 0) {
         printf("Could not read array.");
       }
@@ -263,10 +263,10 @@ namespace octet {
       }
       
       for (int i = 0; i != size; i++) {
-        dens0[i] = 50;
-        dens1[i] = 50;
+        dens0[i] = 0;
+        dens1[i] = 0;
       }
-      print_float(dens0.data(), Nborder, Nborder, 1);
+      //print_float(dens0.data(), Nborder, Nborder, 1);
 
       uv0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
         CL_MEM_COPY_HOST_PTR, size * 2 * sizeof(float), uv0.data(), &err);
@@ -336,7 +336,7 @@ namespace octet {
       dynarray <float>fluidDensity;
       fluidDensity.resize(Nborder*Nborder);
       for (int i = 0; i != Nborder*Nborder; i++) {
-        fluidDensity[i] = 50.0f;
+        fluidDensity[i] = 0.0f;
       }
       
       glGenVertexArrays(1, &vertexArrayID);
@@ -425,7 +425,7 @@ namespace octet {
       size_t local_size[2] = {1, 1};
       cl_int num_groups[2] = {global_size[0]/local_size[0], global_size[1]/local_size[1]};
 
-      int size = (N+2)*(N+2);
+      int size = (N+2);
 
       // Create Kernel Arguments
       err = clSetKernelArg(clAddSourceKern, 0, sizeof(cl_mem), &s);
@@ -613,8 +613,8 @@ namespace octet {
     {
       int i, j, size = (N+2)*(N+2);
 
-      memset(uv, 0, size*2);
-      memset(d, 0, size);
+      memset(uv, 0, size*2*sizeof(float));
+      memset(d, 0, size*sizeof(float));
 
       if ( !mouse_down[0] && !mouse_down[2] ) return;
 
@@ -650,7 +650,7 @@ namespace octet {
         if (num_comp > 1) {
           if (j == 0) printf("(");
         }
-        printf("%g, ", arr[i]);
+        printf("%.2f, ", arr[i]);
         if (num_comp > 1) {
           if (j == num_comp-1) printf("), ");
           j = (j+1)%num_comp;
@@ -686,7 +686,7 @@ namespace octet {
       fshader.init();
       cshader.init();
 
-      N = 8;
+      N = 32; 
       Nborder = N+2;
       dt = 0.1f;
       diff = 0.0f;
@@ -776,7 +776,7 @@ namespace octet {
       vel_step(N, uv1_buffer, uv0_buffer, visc, dt);
       dens_step(N, dens1_buffer, dens0_buffer, uv1_buffer, diff, dt);
 
-      readArray(dens0_buffer, dArray, Nborder*Nborder);
+      readArray(dens1_buffer, dArray, Nborder*Nborder);
       readArray(uv1_buffer, uvArray, Nborder*Nborder*2);
       //printf("Final result\n");
       //print_float(dArray, Nborder, Nborder, 1);

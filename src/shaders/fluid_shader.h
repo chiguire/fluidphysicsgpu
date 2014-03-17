@@ -36,7 +36,7 @@ namespace octet { namespace shaders {
       // it outputs gl_FragColor, the color of the pixel and inputs uv_
       const char fragment_shader[] = SHADER_STR(
         varying float dens_;
-        void main() { gl_FragColor = vec4(dens_, dens_, dens_, 1.0); }
+        void main() { gl_FragColor = vec4(dens_/100.0, dens_/100.0, dens_/100.0, 1.0); }
       );
     
       // use the common shader code to compile and link the shaders

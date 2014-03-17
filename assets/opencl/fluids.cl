@@ -55,7 +55,7 @@ __kernel void lin_solve_float2_ip(__global float2* arr,
   idx10 = (global_addr_y-1)*(data_width)+(global_addr_x);
   idx12 = (global_addr_y+1)*(data_width)+(global_addr_x);
 
-  arr[idx11].x = (arr[idx11].y + a*(arr[idx01].y+arr[idx21].y+arr[idx10].y+arr[idx12].y))/c;
+  arr[idx11].y = (arr[idx11].x + a*(arr[idx01].x+arr[idx21].x+arr[idx10].x+arr[idx12].x))/c;
 }
 
 /* Call with one dimension work item, equals to fluid width */
@@ -200,8 +200,8 @@ __kernel void project_end(__global float2 *uv1,
   idx10 = (global_addr_y-1)*(data_width)+(global_addr_x);
   idx12 = (global_addr_y+1)*(data_width)+(global_addr_x);
 
-  uv1[idx11] -= (float2)(0.5f*(data_width-2)*(uv0[idx21].x-uv0[idx01].x),
-                         0.5f*(data_width-2)*(uv0[idx12].x-uv0[idx10].x));
+  uv1[idx11] -= (float2)(0.5f*(data_width-2)*(uv0[idx21].y-uv0[idx01].y),
+                         0.5f*(data_width-2)*(uv0[idx12].y-uv0[idx10].y));
 }
 
 /** ADVECT **/
@@ -211,26 +211,25 @@ __kernel void advect_float2(__global float2 *uv0,
                             int data_width,
                             float dt0) {
   uint global_addr_x, global_addr_y, idx, idx00, idx01, idx10, idx11;
-  float2 p, pf0, pf1;
-  int2 pi0, pi1;
+  float x, y, s0, t0, s1, t1;
+  int i, j, i0, j0, i1, j1;
   global_addr_x = get_global_id(0)+1;
   global_addr_y = get_global_id(1)+1;
   idx = (global_addr_y)*(data_width)+(global_addr_x);
-  p = clamp((float2)(global_addr_x - dt0*uv[idx].x, global_addr_y - dt0*uv[idx].y),
-            (float2)(0.5f, 0.5f),
-            (float2)((data_width-2)+0.5f, (data_width-2)+0.5f));
-  pi0 = convert_int2(p);
-  pi1 = pi0 + (int2)(1,1);
-  pf1 = p-pi0;
-  pf0 = 1-pf1;
+  x = clamp(global_addr_x - dt0*uv[idx].x, 0.5f, (data_width-2)+0.5f);
+  y = clamp(global_addr_y - dt0*uv[idx].y, 0.5f, (data_width-2)+0.5f);
+  i0 = (int)x; i1 = i0+1;
+  j0 = (int)y; j1 = j0+1;
+  s1 = x - i0; s0 = 1 - s1;
+  t1 = y - j0; t0 = 1 - t1;
 
-  idx00 = pi0.y*data_width+pi0.x;
-  idx01 = pi1.y*data_width+pi0.x;
-  idx11 = pi1.y*data_width+pi1.x;
-  idx10 = pi0.y*data_width+pi1.x;
+  idx00 = j0*data_width+i0;
+  idx01 = j1*data_width+i0;
+  idx11 = j1*data_width+i1;
+  idx10 = j0*data_width+i1;
 
-  uv1[idx] = pf0.x * (pf0.y * uv0[idx00] + pf1.y * uv0[idx01]) +
-             pf1.x * (pf0.y * uv0[idx10] + pf1.y * uv0[idx11]);
+  uv1[idx] = s0 * (t0 * uv0[idx00] + t1 * uv0[idx01]) +
+             s1 * (t0 * uv0[idx10] + t1 * uv0[idx11]);
 }
 
 __kernel void advect_float(__global float *arr0,
@@ -239,24 +238,23 @@ __kernel void advect_float(__global float *arr0,
                            int data_width,
                            float dt0) {
   uint global_addr_x, global_addr_y, idx, idx00, idx01, idx10, idx11;
-  float2 p, pf0, pf1;
-  int2 pi0, pi1;
+  float x, y, s0, t0, s1, t1;
+  int i, j, i0, j0, i1, j1;
   global_addr_x = get_global_id(0)+1;
   global_addr_y = get_global_id(1)+1;
   idx = (global_addr_y)*(data_width)+(global_addr_x);
-  p = clamp((float2)(global_addr_x - dt0*uv[idx].x, global_addr_y - dt0*uv[idx].y),
-            (float2)(0.5f, 0.5f),
-            (float2)((data_width-2)+0.5f, (data_width-2)+0.5f));
-  pi0 = convert_int2(p);
-  pi1 = pi0 + (int2)(1,1);
-  pf1 = p-pi0;
-  pf0 = 1-pf1;
+  x = clamp(global_addr_x - dt0*uv[idx].x, 0.5f, (data_width-2)+0.5f);
+  y = clamp(global_addr_y - dt0*uv[idx].y, 0.5f, (data_width-2)+0.5f);
+  i0 = (int)x; i1 = i0+1;
+  j0 = (int)y; j1 = j0+1;
+  s1 = x - i0; s0 = 1 - s1;
+  t1 = y - j0; t0 = 1 - t1;
 
-  idx00 = pi0.y*data_width+pi0.x;
-  idx01 = pi1.y*data_width+pi0.x;
-  idx11 = pi1.y*data_width+pi1.x;
-  idx10 = pi0.y*data_width+pi1.x;
+  idx00 = j0*data_width+i0;
+  idx01 = j1*data_width+i0;
+  idx11 = j1*data_width+i1;
+  idx10 = j0*data_width+i1;
 
-  arr1[idx] = pf0.x * (pf0.y * arr0[idx00] + pf1.y * arr0[idx01]) +
-              pf1.x * (pf0.y * arr0[idx10] + pf1.y * arr0[idx11]);
+  arr1[idx] = s0 * (t0 * arr0[idx00] + t1 * arr0[idx01]) +
+              s1 * (t0 * arr0[idx10] + t1 * arr0[idx11]);
 }
