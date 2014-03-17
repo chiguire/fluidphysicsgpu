@@ -369,19 +369,20 @@ namespace octet {
       positions.resize(Nborder*Nborder*3*2);
       for (int i = 0; i != Nborder; i++) {
         for (int j = 0; j != Nborder; j++) {
-          positions[(j*Nborder+i)*6+0] = -fluidLength/2.0f+j*fluidStep;
-          positions[(j*Nborder+i)*6+1] = -fluidLength/2.0f+i*fluidStep;
-          positions[(j*Nborder+i)*6+2] = 0;
+          positions[j*6*Nborder+i*6+0] = -fluidLength/2.0f+i*fluidStep;
+          positions[j*6*Nborder+i*6+1] = -fluidLength/2.0f+j*fluidStep;
+          positions[j*6*Nborder+i*6+2] = 0;
 
-          positions[(j*Nborder+i)*6+3] = -fluidLength/2.0f+j*fluidStep + u[IX(i, j)];
-          positions[(j*Nborder+i)*6+4] = -fluidLength/2.0f+i*fluidStep + v[IX(i, j)];
-          positions[(j*Nborder+i)*6+5] = 0;
+          if (i == 6 && j == 6) printf("(6,6) -> (%g, %g)\n", u[IX(i,j)]*1000, v[IX(i,j)]*1000);
+          positions[j*6*Nborder+i*6+3] = -fluidLength/2.0f+i*fluidStep + 1000*u[IX(i, j)];
+          positions[j*6*Nborder+i*6+4] = -fluidLength/2.0f+j*fluidStep + 1000*v[IX(i, j)];
+          positions[j*6*Nborder+i*6+5] = 0;
         }
       }
 
       glEnableVertexAttribArray(attribute_pos);
-      glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, positions.data());
-      glDrawArrays(GL_LINES, 0, Nborder*Nborder*2);
+      glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, &positions[0]);
+      glDrawArrays(GL_POINTS, 0, Nborder*Nborder*2);
       glFlush();
       glDisableVertexAttribArray(attribute_pos);
     }

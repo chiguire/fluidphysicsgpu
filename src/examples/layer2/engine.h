@@ -72,6 +72,8 @@ namespace octet {
     float force;
     float source;
 
+    float fluidLength;
+
     int win_x, win_y;
     int mouse_down[3];
     int omx, omy, mx, my;
@@ -110,9 +112,6 @@ namespace octet {
         return;
       }
       printf("Found GL Sharing Support.\n");
-
-
-
     }
 
     cl_kernel createKernel(cl_program prg, const char *kernel_name) {
@@ -270,12 +269,12 @@ namespace octet {
 
       uv0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
         CL_MEM_COPY_HOST_PTR, size * 2 * sizeof(float), uv0.data(), &err);
-      dens0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
-        CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens0.data(), &err);
+      //dens0_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
+      //  CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens0.data(), &err);
       uv1_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
         CL_MEM_COPY_HOST_PTR, size * 2 * sizeof(float), uv1.data(), &err);
-      dens1_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
-        CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens1.data(), &err);
+      //dens1_buffer = clCreateBuffer(clContext, CL_MEM_READ_WRITE |
+      //  CL_MEM_COPY_HOST_PTR, size * sizeof(float), dens1.data(), &err);
       if (err < 0) {
         perror("Could not create a buffer");
         return; //exit(1);
@@ -311,7 +310,6 @@ namespace octet {
       cl_int err;
 
       dynarray <float>fluidPositions;
-      float fluidLength = 18.0f;
       float fluidStep = fluidLength/Nborder;
       for (int i = 0; i != Nborder; i++) {
         for (int j = 0; j != Nborder; j++) {
@@ -357,18 +355,18 @@ namespace octet {
       glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
       glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_DYNAMIC_DRAW);
       glVertexPointer(1, GL_FLOAT, 0, 0);
-      /*dens0_buffer = clCreateFromGLBuffer(clContext, CL_MEM_READ_WRITE, fluidDensity0VBO, &err);
+      dens0_buffer = clCreateFromGLBuffer(clContext, CL_MEM_READ_WRITE, fluidDensity0VBO, &err);
       if (err < 0) {
         perror("Error creating CL buffer from GL.");
-      }*/
+      }
 
       glBindBuffer(GL_ARRAY_BUFFER, fluidDensity1VBO);
       glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_DYNAMIC_DRAW);
       glVertexPointer(1, GL_FLOAT, 0, 0);
-     /* dens1_buffer = clCreateFromGLBuffer(clContext, CL_MEM_READ_WRITE, fluidDensity1VBO, &err);
+      dens1_buffer = clCreateFromGLBuffer(clContext, CL_MEM_READ_WRITE, fluidDensity1VBO, &err);
       if (err < 0) {
         perror("Error creating CL buffer from GL.");
-      }*/
+      }
 
       glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
@@ -631,6 +629,10 @@ namespace octet {
 
       if ( mouse_down[2] ) {
         d[j*Nborder+i] = source;
+        d[(j-1)*Nborder+(i+0)] = source;
+        d[(j+1)*Nborder+(i+0)] = source;
+        d[(j+0)*Nborder+(i-1)] = source;
+        d[(j+0)*Nborder+(i+1)] = source;
       }
 
       omx = mx;
@@ -686,13 +688,15 @@ namespace octet {
       fshader.init();
       cshader.init();
 
-      N = 32; 
+      N = 128; 
       Nborder = N+2;
       dt = 0.1f;
       diff = 0.0f;
       visc = 0.0f;
-      force = 5.0f;
+      force = 10.0f;
       source = 100.0f;
+
+      fluidLength = 19.0f;
 
       dvel = 0;
 
@@ -702,7 +706,7 @@ namespace octet {
       // Create device and context
       initOpenCL();
       initVBO();
-      //initCLGLSharing();
+      initCLGLSharing();
 
       //overlay.init();
     }
@@ -762,13 +766,13 @@ namespace octet {
     } 
 
     void calculateFluid() {
-      //cl_int err;
+      cl_int err;
 
-      /*err = clEnqueueAcquireGLObjects(clQueue, 1, &dens0_buffer, NULL, NULL, NULL);
+      err = clEnqueueAcquireGLObjects(clQueue, 1, &dens0_buffer, NULL, NULL, NULL);
       err = clEnqueueAcquireGLObjects(clQueue, 1, &dens1_buffer, NULL, NULL, NULL);
       if (err < 0) {
         perror("Error acquiring GL objects.");
-      }*/
+      }
       get_from_UI ( dArray, uvArray );
       writeArray(dens0_buffer, dArray, Nborder*Nborder);
       writeArray(uv0_buffer, uvArray, Nborder*Nborder*2);
@@ -776,19 +780,18 @@ namespace octet {
       vel_step(N, uv1_buffer, uv0_buffer, visc, dt);
       dens_step(N, dens1_buffer, dens0_buffer, uv1_buffer, diff, dt);
 
-      readArray(dens1_buffer, dArray, Nborder*Nborder);
+      /*readArray(dens1_buffer, dArray, Nborder*Nborder);
       readArray(uv1_buffer, uvArray, Nborder*Nborder*2);
-      //printf("Final result\n");
-      //print_float(dArray, Nborder, Nborder, 1);
-      glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
-      glBufferSubData(GL_ARRAY_BUFFER, 0, Nborder*Nborder*sizeof(GLfloat), dArray);
 
-      /*err = clEnqueueReleaseGLObjects(clQueue, 1, &dens0_buffer, NULL, NULL, NULL);
+      glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
+      glBufferSubData(GL_ARRAY_BUFFER, 0, Nborder*Nborder*sizeof(GLfloat), dArray);*/
+
+      err = clEnqueueReleaseGLObjects(clQueue, 1, &dens0_buffer, NULL, NULL, NULL);
       err = clEnqueueReleaseGLObjects(clQueue, 1, &dens1_buffer, NULL, NULL, NULL);
       if (err < 0) {
         perror("Error releasing GL objects.");
       }
-      err = clFlush(clQueue);*/
+      err = clFlush(clQueue);
     }
 
     void renderFluid() {
@@ -797,7 +800,7 @@ namespace octet {
       glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
       
       glEnableVertexAttribArray(attribute_uv);
-      glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
+      glBindBuffer(GL_ARRAY_BUFFER, fluidDensity1VBO);
       glVertexAttribPointer(attribute_uv, 1, GL_FLOAT, GL_FALSE, 0, (void *)0);
       
       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, fluidIndicesVBO);
@@ -813,25 +816,26 @@ namespace octet {
       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
       glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-      float fluidLength = 18.0f;
+      readArray(uv1_buffer, uvArray, Nborder*Nborder*2);
       float fluidStep = fluidLength/Nborder;
+      float h = 100.0f;
 
-      dynarray <float> positions;
-      positions.resize(Nborder*Nborder*3*2);
-      for (int i = 0; i != Nborder; i++) {
-        for (int j = 0; j != Nborder; j++) {
-          positions[(j*Nborder+i)*6+0] = -fluidLength/2.0f+j*fluidStep;
-          positions[(j*Nborder+i)*6+1] = -fluidLength/2.0f+i*fluidStep;
-          positions[(j*Nborder+i)*6+2] = 0;
+      dynarray <float> poses;
+      poses.resize(Nborder*Nborder*6);
+      for (int j = 0; j != Nborder; j++) {
+        for (int i = 0; i != Nborder; i++) {
+          poses[(j*Nborder+i)*6+0] = -fluidLength/2.0f+i*fluidStep;
+          poses[(j*Nborder+i)*6+1] = -fluidLength/2.0f+j*fluidStep;
+          poses[(j*Nborder+i)*6+2] = 0.0f;
 
-          positions[(j*Nborder+i)*6+3] = -fluidLength/2.0f+j*fluidStep + uvArray[j*2*Nborder+i*2];
-          positions[(j*Nborder+i)*6+4] = -fluidLength/2.0f+i*fluidStep + uvArray[j*2*Nborder+i*2+1];
-          positions[(j*Nborder+i)*6+5] = 0;
+          poses[(j*Nborder+i)*6+3] = -fluidLength/2.0f+i*fluidStep + h*uvArray[(j*Nborder+i)*2];
+          poses[(j*Nborder+i)*6+4] = -fluidLength/2.0f+j*fluidStep + h*uvArray[(j*Nborder+i)*2+1];
+          poses[(j*Nborder+i)*6+5] = 0.0f;
         }
       }
 
       glEnableVertexAttribArray(attribute_pos);
-      glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, positions.data());
+      glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, &poses[0]);
       glDrawArrays(GL_LINES, 0, Nborder*Nborder*2);
       glFlush();
       glDisableVertexAttribArray(attribute_pos);
