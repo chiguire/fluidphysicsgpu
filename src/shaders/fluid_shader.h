@@ -55,4 +55,5 @@ namespace octet { namespace shaders {
       glUniformMatrix4fv(modelToProjectionIndex_, 1, GL_FALSE, modelToProjection.get());
     }
   };
+
 }}

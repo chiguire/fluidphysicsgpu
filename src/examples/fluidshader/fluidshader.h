@@ -26,6 +26,8 @@ namespace octet {
     float * u, * v, * u_prev, * v_prev;
     float * dens, * dens_prev;
 
+    float *uvArrayPositions;
+
     int win_x, win_y;
     int mouse_down[3];
     int omx, omy, mx, my;
@@ -35,6 +37,9 @@ namespace octet {
     GLuint fluidIndicesVBO;
     GLuint fluidDensity0VBO;
     GLuint fluidDensity1VBO;
+
+    GLuint fluidVelocitiesPositionsVBO;
+    GLuint fluidVelocitiesIndicesVBO;
 
     void initVBO() {
       dynarray <float>fluidPositions;
@@ -63,7 +68,7 @@ namespace octet {
       dynarray <float>fluidDensity;
       fluidDensity.resize(Nborder*Nborder);
       for (int i = 0; i != Nborder*Nborder; i++) {
-        fluidDensity[i] = ((float)i/(Nborder*Nborder))*1.0f;
+        fluidDensity[i] = 0.0f;
       }
       
       glGenVertexArrays(1, &vertexArrayID);
@@ -74,17 +79,44 @@ namespace octet {
       glGenBuffers(1, &fluidDensity0VBO);
       glGenBuffers(1, &fluidDensity1VBO);
       
+      glGenBuffers(1, &fluidVelocitiesPositionsVBO);
+      glGenBuffers(1, &fluidVelocitiesIndicesVBO);
+      
       glBindBuffer(GL_ARRAY_BUFFER, fluidPositionsVBO);
       glBufferData(GL_ARRAY_BUFFER, fluidPositions.size()*sizeof(GLfloat), (void *)fluidPositions.data(), GL_DYNAMIC_DRAW);
 
       glBindBuffer(GL_ARRAY_BUFFER, fluidDensity0VBO);
-      glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_DYNAMIC_DRAW); //NULL, GL_DYNAMIC_DRAW);//
-      glBindBuffer(GL_ARRAY_BUFFER, 0);
+      glBufferData(GL_ARRAY_BUFFER, fluidDensity.size()*sizeof(GLfloat), (void *)fluidDensity.data(), GL_DYNAMIC_DRAW);
 
       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, fluidIndicesVBO);
       glBufferData(GL_ELEMENT_ARRAY_BUFFER, fluidIndices.size()*sizeof(GLushort), (void *)fluidIndices.data(), GL_DYNAMIC_DRAW);
-      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
+      for (int j = 0; j != Nborder; j++) {
+        for (int i = 0; i != Nborder; i++) {
+          uvArrayPositions[(j*Nborder+i)*6+0] = -fluidLength/2.0f+i*fluidStep;
+          uvArrayPositions[(j*Nborder+i)*6+1] = -fluidLength/2.0f+j*fluidStep;
+          uvArrayPositions[(j*Nborder+i)*6+2] = 0.0f;
+
+          uvArrayPositions[(j*Nborder+i)*6+3] = -fluidLength/2.0f+i*fluidStep;
+          uvArrayPositions[(j*Nborder+i)*6+4] = -fluidLength/2.0f+j*fluidStep;
+          uvArrayPositions[(j*Nborder+i)*6+5] = 0.0f;
+        }
+      }
+
+      dynarray<unsigned short>fluidVelocitiesIndices;
+      for (unsigned short i = 0; i != Nborder*Nborder; i++) {
+        fluidVelocitiesIndices.push_back(i*2);
+        fluidVelocitiesIndices.push_back(i*2+1);
+      }
+
+      glBindBuffer(GL_ARRAY_BUFFER, fluidVelocitiesPositionsVBO);
+      glBufferData(GL_ARRAY_BUFFER, Nborder*Nborder*6*sizeof(GLfloat), (void *)uvArrayPositions, GL_DYNAMIC_DRAW);
+
+      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, fluidVelocitiesIndicesVBO);
+      glBufferData(GL_ELEMENT_ARRAY_BUFFER, fluidVelocitiesIndices.size()*sizeof(GLushort), (void *)fluidVelocitiesIndices.data(), GL_DYNAMIC_DRAW);
+
+      glBindBuffer(GL_ARRAY_BUFFER, 0);
+      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     }
 
     void free_data ( void )
@@ -95,6 +127,7 @@ namespace octet {
       if ( v_prev ) free ( v_prev );
       if ( dens ) free ( dens );
       if ( dens_prev ) free ( dens_prev );
+      if ( uvArrayPositions ) free ( uvArrayPositions );
     }
 
     void clear_data ( void )
@@ -116,6 +149,7 @@ namespace octet {
       v_prev		= (float *) malloc ( size*sizeof(float) );
       dens		= (float *) malloc ( size*sizeof(float) );	
       dens_prev	= (float *) malloc ( size*sizeof(float) );
+      uvArrayPositions = (float *)malloc(size*3*2*sizeof(float));
 
       if ( !u || !v || !u_prev || !v_prev || !dens || !dens_prev ) {
         fprintf ( stderr, "cannot allocate data\n" );
@@ -242,10 +276,9 @@ namespace octet {
     void vel_step ( int N, float * u, float * v, float * u0, float * v0, float visc, float dt )
     {
       add_source ( N, u, u0, dt ); add_source ( N, v, v0, dt );
-      SWAP ( u0, u ); diffuse ( N, 1, u, u0, visc, dt );
-      SWAP ( v0, v ); diffuse ( N, 2, v, v0, visc, dt );
-      project ( N, u, v, u0, v0 );
-      SWAP ( u0, u ); SWAP ( v0, v );
+      diffuse ( N, 1, u0, u, visc, dt );
+      diffuse ( N, 2, v0, v, visc, dt );
+      project ( N, u0, v0, u, v );
       advect ( N, 1, u, u0, u0, v0, dt ); advect ( N, 2, v, v0, u0, v0, dt );
       project ( N, u, v, u0, v0 );
     }
@@ -259,7 +292,7 @@ namespace octet {
     /// this is called once OpenGL is initialized
     void app_init() {
       fshader.init();
-      //cshader.init();
+      cshader.init();
 
       N = 64;
       Nborder = N+2;
@@ -307,15 +340,13 @@ namespace octet {
       
       mat4t modelToProjection = setProjection(vx, vy);
       
+      fshader.render(modelToProjection);
+      renderFluid();
       if (dvel) {
-        vec4 color(1.0f, 0.0f, 0.0f, 1.0f);
+        vec4 color(1.0f, 1.0f, 0.0f, 1.0f);
         cshader.render(modelToProjection, color);
         renderVelocities();
-      } else {
-        fshader.render(modelToProjection);
-        renderFluid();
       }
-      currentAngle++;
     }
 
     mat4t setProjection(int vx, int vy) {
@@ -359,31 +390,28 @@ namespace octet {
     }
 
     void renderVelocities() {
-      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-      glBindBuffer(GL_ARRAY_BUFFER, 0);
-
       float fluidLength = 18.0f;
       float fluidStep = fluidLength/Nborder;
 
-      dynarray <float> positions;
-      positions.resize(Nborder*Nborder*3*2);
-      for (int i = 0; i != Nborder; i++) {
-        for (int j = 0; j != Nborder; j++) {
-          positions[j*6*Nborder+i*6+0] = -fluidLength/2.0f+i*fluidStep;
-          positions[j*6*Nborder+i*6+1] = -fluidLength/2.0f+j*fluidStep;
-          positions[j*6*Nborder+i*6+2] = 0;
+      for (int j = 0; j != Nborder; j++) {
+        for (int i = 0; i != Nborder; i++) {
+          uvArrayPositions[(j*Nborder+i)*6+0] = -fluidLength/2.0f+i*fluidStep;
+          uvArrayPositions[(j*Nborder+i)*6+1] = -fluidLength/2.0f+j*fluidStep;
+          uvArrayPositions[(j*Nborder+i)*6+2] = 0.0f;
 
-          if (i == 6 && j == 6) printf("(6,6) -> (%g, %g)\n", u[IX(i,j)]*1000, v[IX(i,j)]*1000);
-          positions[j*6*Nborder+i*6+3] = -fluidLength/2.0f+i*fluidStep + 1000*u[IX(i, j)];
-          positions[j*6*Nborder+i*6+4] = -fluidLength/2.0f+j*fluidStep + 1000*v[IX(i, j)];
-          positions[j*6*Nborder+i*6+5] = 0;
+          uvArrayPositions[(j*Nborder+i)*6+3] = -fluidLength/2.0f+i*fluidStep + u[IX(i, j)];
+          uvArrayPositions[(j*Nborder+i)*6+4] = -fluidLength/2.0f+j*fluidStep + v[IX(i, j)];
+          uvArrayPositions[(j*Nborder+i)*6+5] = 0.0f;
         }
       }
 
+      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, fluidVelocitiesIndicesVBO);
+      glBindBuffer(GL_ARRAY_BUFFER, fluidVelocitiesPositionsVBO);
+      glBufferSubData(GL_ARRAY_BUFFER, 0, Nborder*Nborder*6*sizeof(GLfloat), uvArrayPositions);
+      glLineWidth(1.5f);
       glEnableVertexAttribArray(attribute_pos);
-      glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, &positions[0]);
-      glDrawArrays(GL_POINTS, 0, Nborder*Nborder*2);
-      glFlush();
+      glVertexAttribPointer(attribute_pos, 3, GL_FLOAT, GL_FALSE, 0, 0);
+      glDrawElements(GL_LINES, Nborder*Nborder*2, GL_UNSIGNED_SHORT, 0);
       glDisableVertexAttribArray(attribute_pos);
     }
   };
